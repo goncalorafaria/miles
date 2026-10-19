@@ -17,6 +17,7 @@
 #   MIRROR_URL                docker.io pull-through mirror(s), as in open-instruct; see   (optional)
 #                             registry_mirror/registry_mirror.py
 #   KEEP_LAST_N_CHECKPOINTS   keep only the newest N training checkpoints, 0 keeps all     (default: 0)
+#   LAUNCHER                  the launcher script   (default: examples/tmax/run_tmax_qwen3_5.py)
 #   EXTRA_ARGS                launcher flags that override the config
 #   DOCKER_PAT, DOCKERHUB_USERNAME   Docker Hub login for the sandbox image pulls
 #   SANDBOX_NICE              niceness of the podman services, inherited by every sandbox   (default: 19)
@@ -33,6 +34,7 @@ set -euxo pipefail
 
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/../../.." && pwd)
 CONFIG="${1:?usage: tmax_beaker_entry.sh <config.yaml>}"
+LAUNCHER=${LAUNCHER:-examples/tmax/run_tmax_qwen3_5.py}
 SANDBOX_SHARDS=${SANDBOX_SHARDS:-1}
 NUM_NODES=${NUM_NODES:-1}
 RANK=${BEAKER_REPLICA_RANK:-0}
@@ -279,7 +281,7 @@ fi
 export PYTHONPATH=$REPO
 export HF_HOME=${HF_HOME:-$(dirname "$MODEL_DIR")/hf_home}  # next to the models, so downloads are cached
 # EXTRA_ARGS is a shell-quoted flag list, hence eval.
-eval python examples/tmax/run_tmax_qwen3_5.py prepare "$CONFIG" "${EXTRA_ARGS:-}"
+eval python "$LAUNCHER" prepare "$CONFIG" "${EXTRA_ARGS:-}"
 if [ "$NUM_NODES" -gt 1 ]; then
     GPUS=$(nvidia-smi -L | wc -l)
     PYTHONUNBUFFERED=1 ray start --head --node-ip-address "$HEAD_IP" --port $RAY_PORT --num-gpus "$GPUS" \
@@ -316,7 +318,7 @@ if [ "$SANDBOX_BACKEND" = gateway ]; then
     trap 'timeout 90 python examples/tmax/tmax_gateway.py close-all --timeout-s 60 || true' EXIT
     trap 'exit 143' TERM INT
 fi
-eval python examples/tmax/run_tmax_qwen3_5.py execute "$CONFIG" "${EXTRA_ARGS:-}" &
+eval python "$LAUNCHER" execute "$CONFIG" "${EXTRA_ARGS:-}" &
 wait $!
 # `ray job submit` also returns 0 when its log stream drops while the job still runs (2026-10-17): wait for the job
 # itself, and fail the replica unless it SUCCEEDED, before marking anything done.

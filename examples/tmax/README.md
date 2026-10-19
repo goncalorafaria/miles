@@ -33,13 +33,14 @@ Validated end to end on B300s (Beaker `ai2/holmes`):
 | File | Role |
 |---|---|
 | `run_tmax_qwen3_5.py` | Launcher: `prepare` (download, extract tasks, prompt JSONL, torch_dist conversion) and `execute` |
+| `run_tmax_qwen3_5_moe.py` | The same launcher for Qwen3.5 MoE (Qwen3.5-35B-A3B): adds expert parallelism, R3 and optional MTP training |
 | `tmax_agent_function.py` | Agent loop for `agentic_tool_call.generate`, plus the over-sampling `abort` hook |
 | `tmax_sandbox.py` | Per-episode container: the episode logic shared by both backends, and the podman backend (a Docker-API socket), ported from open-instruct |
 | `tmax_gateway.py` | The gateway backend: containers on a LiteRegistry podman fleet through literegistry's own client, after open-instruct's `GatewayBackend` |
 | `generate.py` | Reward function (`None` drops the group), the generate function that adds an SGLang OPD teacher's log-probs, and pure OPD's reward post-process |
 | `tmax_metrics.py` | Per-rollout W&B metrics open-instruct logs: episodes and tools, solve rates before the filter, trained-sample lengths and advantages |
 | `tmax_prompts.py` | open-instruct's system prompt |
-| `configs/` | Experiment configs: open-instruct's production recipe on one node (`prod_1node.yaml`) and on its 4 nodes (`prod_4node.yaml`), and 4-GPU smoke tests (`smoke_2node.yaml` spans 2 nodes, `smoke_gateway.yaml` uses the podman fleet, `smoke_opd*.yaml` distill) |
+| `configs/` | Experiment configs: open-instruct's production recipe on one node (`prod_1node.yaml`) and on its 4 nodes (`prod_4node.yaml`), and 4-GPU smoke tests (`smoke_2node.yaml` spans 2 nodes, `smoke_gateway.yaml` uses the podman fleet, `smoke_opd*.yaml` distill; `smoke_moe_sync.yaml` is Qwen3.5-35B-A3B) |
 | `beaker/` | `submit.py` (config -> Beaker job, pinned to a commit), the job's entrypoint, open-instruct's vendored podman bring-up, and the registry mirror tooling |
 | `docker/` | `build_train_image.sh`: the training image, built from `docker/Dockerfile` at `HEAD` and uploaded to Beaker under its commit |
 | `tools/` | `watch_run.py` (one line per step, slow sync or failure of a running Beaker experiment) and `check_samples.py` (trained samples vs episode traces) |
@@ -89,6 +90,21 @@ Sandboxes come from one of two backends (`sandbox_backend`):
 - **`gateway`** runs containers on a LiteRegistry podman fleet through its gateway (`gateway_url`, or
   `TMAX_GATEWAY_URL`), so no sandbox shares a node with training or SGLang. On Beaker the head starts the gateway
   itself ([Sandboxes on a podman fleet](beaker/README.md#sandboxes-on-a-podman-fleet-gateway-backend)).
+
+### Qwen3.5 MoE
+
+`run_tmax_qwen3_5_moe.py` runs the same recipe for Qwen3.5-35B-A3B, with every field of the dense launcher plus
+`expert_model_parallel_size`, `rollout_routing_replay` (R3, on), `mtp_training` (off; with it the MTP head is trained
+and drafts EAGLE speculative decoding) and `sglang_moe_runner_backend`; its docstring has the details. The default
+student, `Qwen3.5-35B-A3B-tmax-template`, is
+[`shatu/Qwen3.5-35B-A3B`](https://huggingface.co/shatu/Qwen3.5-35B-A3B) (private): `Qwen/Qwen3.5-35B-A3B` with
+`hamishivi/Qwen3.5-9B`'s chat-template change (see [Findings](#required-settings)).
+
+```bash
+python examples/tmax/run_tmax_qwen3_5_moe.py execute examples/tmax/configs/smoke_moe_sync.yaml
+```
+
+On Beaker the config's `beaker:` section names the launcher (`launcher: examples/tmax/run_tmax_qwen3_5_moe.py`).
 
 ### Beaker
 
@@ -418,6 +434,17 @@ For the 2B pair (`smoke_opd_2b.yaml`, not yet run on Beaker), scoring `hamishivi
   reasoning parser does not: for a model that emits no `</think>` it files the whole turn as reasoning and
   drops every tool call. Serve these checkpoints in vLLM with `--language-model-only` (they ship no
   image-processor config).
+
+- **The checkpoint's chat template is not used in training.** `--tito-model qwen35` replaces it with Miles'
+  `qwen3.5_fixed.jinja` with `preserve_thinking` (also handed to SGLang), which keeps every assistant turn's
+  reasoning, and TITO keeps each turn's generated tokens as they were. `hamishivi/Qwen3.5-9B` (and
+  `shatu/Qwen3.5-35B-A3B`) differ from Qwen's checkpoints only in the template line that keeps past reasoning
+  (`{%- if reasoning_content %}` for `{%- if loop.index0 > ns.last_query_index %}`), so the change matters for
+  evals and other consumers of the checkpoint's own template. Qwen3.5-35B-A3B's template and tokenizer are
+  byte-identical to Qwen3.5-9B's.
+- **R3 payloads in synchronous mode.** The session server sends only each turn's new routing rows unless
+  `--pause-generation-mode` is `retract`, Miles' default and what synchronous runs keep; there every turn returns
+  the whole episode's routing so far.
 
 ### Throughput
 

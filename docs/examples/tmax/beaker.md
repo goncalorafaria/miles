@@ -81,6 +81,7 @@ Before submitting:
 | `synchronized_start_timeout` | `1h` | Multi-node: how long replicas wait for each other to start |
 | `shared_memory` | `256GiB` | `/dev/shm` |
 | `image` | `docker.io/radixark/miles:latest` | A Docker image, or `beaker:<account>/<name>`; see [Images](#images) |
+| `launcher` | `examples/tmax/run_tmax_qwen3_5.py` | The launcher script the entrypoint runs (`run_tmax_qwen3_5_moe.py` for MoE) |
 | `sandbox_shards` | `1` | Podman daemons per node (`SWERL_PODMAN_SERVICE_COUNT`) |
 | `mirror_url` | unset | docker.io pull-through mirrors, comma-separated, or `auto` |
 | `keep_last_n_checkpoints` | `0` (keep all) | The pruner's retention |

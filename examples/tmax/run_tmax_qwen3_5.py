@@ -268,7 +268,7 @@ class ScriptArgs(command_utils.ExecuteTrainConfig):
             f"({self.save_interval}): HF snapshots are written at saves"
         )
         if self.opd_teacher is not None:
-            student, teacher = _RECIPES[self.model_name], _RECIPES[self.opd_teacher]
+            student, teacher = self.recipe_for(self.model_name), self.recipe_for(self.opd_teacher)
             assert self.opd_mode == "sglang" or student.megatron_model_type == teacher.megatron_model_type, (
                 f"Megatron-mode OPD needs one architecture: {self.model_name} is {student.megatron_model_type}, "
                 f"{self.opd_teacher} is {teacher.megatron_model_type}"
@@ -291,9 +291,16 @@ class ScriptArgs(command_utils.ExecuteTrainConfig):
             self.opd_pure and self.filter_zero_std
         ), "opd_pure trains on every group: set filter_zero_std false"
 
+    def recipe_for(self, model_name: str) -> _Recipe:
+        return _RECIPES[model_name]
+
     @property
     def recipe(self) -> _Recipe:
-        return _RECIPES[self.model_name]
+        return self.recipe_for(self.model_name)
+
+    def model_specific_train_args(self) -> str:
+        """Flags a model family adds to the train command, before extra_args (see run_tmax_qwen3_5_moe.py)."""
+        return ""
 
     @property
     def opd_mode(self) -> Literal["megatron", "sglang"] | None:
@@ -302,7 +309,8 @@ class ScriptArgs(command_utils.ExecuteTrainConfig):
         if self.opd_teacher_mode != "auto":
             return self.opd_teacher_mode
         same_architecture = (
-            _RECIPES[self.model_name].megatron_model_type == _RECIPES[self.opd_teacher].megatron_model_type
+            self.recipe_for(self.model_name).megatron_model_type
+            == self.recipe_for(self.opd_teacher).megatron_model_type
         )
         return "megatron" if same_architecture else "sglang"
 
@@ -373,6 +381,10 @@ class ScriptArgs(command_utils.ExecuteTrainConfig):
 @app.command()
 @command_utils.dataclass_cli
 def prepare(args: ScriptArgs):
+    run_prepare(args)
+
+
+def run_prepare(args: ScriptArgs) -> None:
     U = args.create_backend()
     U.hf_download_dataset(_DATASET, data_dir=args.data_dir)
     if not Path(args.task_data_dir).exists():
@@ -383,7 +395,7 @@ def prepare(args: ScriptArgs):
         )
     _write_prompt_data(args)
     for name in filter(None, [args.model_name, args.opd_teacher]):
-        recipe = _RECIPES[name]
+        recipe = args.recipe_for(name)
         U.exec_command_cpu(_fetch_command(recipe.hf_repo, f"{args.model_dir}/{name}"))
         if name == args.opd_teacher and args.opd_mode == "sglang":
             continue  # SGLang serves the HF checkpoint
@@ -423,6 +435,10 @@ def _write_prompt_data(args: ScriptArgs) -> None:
 @app.command()
 @command_utils.dataclass_cli
 def execute(args: ScriptArgs):
+    run_execute(args)
+
+
+def run_execute(args: ScriptArgs) -> None:
     U = args.create_backend()
     assert (
         args.sandbox_backend != "gateway" or args.sandbox_gateway_url
@@ -596,6 +612,7 @@ def execute(args: ScriptArgs):
         f"{perf_args} "
         f"{sglang_args} "
         f"{misc_args} "
+        f"{args.model_specific_train_args()} "
         f"{args.extra_args} "
     )
 
@@ -750,7 +767,7 @@ def _wandb_args(args: ScriptArgs) -> str:
     return shlex.join(tokens) + " "
 
 
-def _apply_yaml_config(argv: list[str]) -> list[str]:
+def apply_yaml_config(argv: list[str], args_cls: type[ScriptArgs] = ScriptArgs) -> list[str]:
     """Accept ``<command> <experiment>.yaml [--flag value ...]``, as open-instruct's ArgumentParserPlus does.
 
     The YAML's keys (ScriptArgs fields) become MILES_SCRIPT_* env vars, which dataclass_cli reads as defaults, so
@@ -763,7 +780,7 @@ def _apply_yaml_config(argv: list[str]) -> list[str]:
     assert len(configs) == 1, f"pass at most one experiment config, got {configs}"
     config = yaml.safe_load(Path(configs[0]).read_text()) or {}
     config.pop("beaker", None)
-    unknown = set(config) - {f.name for f in dataclasses.fields(ScriptArgs)}
+    unknown = set(config) - {f.name for f in dataclasses.fields(args_cls)}
     assert not unknown, f"{configs[0]} sets unknown fields: {sorted(unknown)}"
     for key, value in config.items():
         if value is not None:
@@ -773,5 +790,5 @@ def _apply_yaml_config(argv: list[str]) -> list[str]:
 
 
 if __name__ == "__main__":
-    sys.argv = _apply_yaml_config(sys.argv)
+    sys.argv = apply_yaml_config(sys.argv)
     app()
