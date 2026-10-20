@@ -1,5 +1,5 @@
 # 4-GPU smoke test of the MoE launcher (sync): smoke_sync.yaml's 3 steps of 4 prompts x 4 samples on a 64-prompt
-# subset, 16k per episode, for Qwen3.5-35B-A3B with EP 4 and R3. Preemptible capacity: no min_runtime.
+# subset, 16k per episode, for Qwen3.5-35B-A3B with EP 4 and R3.
 num_gpus_per_node: 4
 num_prompts: 64
 rollout_batch_size: 4
@@ -22,7 +22,7 @@ beaker:
   workspace: ai2/oe-agents-holmes
   budget: ai2/oe-omai
   priority: urgent
-  preemptible: true
+  min_runtime: 1h
   retries: 0
   gpus: 4
   shared_memory: 256GiB
