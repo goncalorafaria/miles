@@ -1,0 +1,35 @@
+# smoke_moe_sync.yaml on one ai2/ceres node (8x H100 80GB). The 35B-A3B's bf16 weights (72 GB) do not fit one 80GB
+# GPU next to a KV cache, so each SGLang engine spans 4 GPUs (EP 4, as upstream's 8x H100 recipe), and training
+# shards the experts 8 ways (~41 GB of weights and fp32 grads per GPU; EP 4 would be ~65 GB).
+num_gpus_per_node: 8
+num_prompts: 64
+rollout_batch_size: 4
+n_samples_per_prompt: 4
+num_rollout: 3
+max_seq_len: 16384
+tensor_model_parallel_size: 1
+expert_model_parallel_size: 8
+rollout_num_gpus_per_engine: 4
+sglang_ep_size: 4
+sglang_moe_runner_backend: auto  # SGLang's own choice on Hopper; flashinfer_cutlass is upstream's B300 setting
+sglang_mem_fraction_static: 0.6
+filter_zero_std: false
+save_interval: 1000
+episode_timeout_s: 3600
+model_dir: /weka/nora-default/shashankg/miles_tmax_v2/models
+data_dir: /weka/nora-default/shashankg/miles_tmax_v2/datasets
+output_dir: /weka/nora-default/shashankg/miles_tmax_v2/output
+
+beaker:
+  launcher: examples/tmax/run_tmax_qwen3_5_moe.py
+  cluster: ai2/ceres
+  workspace: ai2/oe-agents
+  budget: ai2/oe-omai
+  priority: urgent
+  min_runtime: 1h
+  retries: 0
+  gpus: 8
+  shared_memory: 256GiB
+  image: docker.io/radixark/miles:dev-202610151741
+  sandbox_shards: 1
+  dockerhub_username: shashankg209

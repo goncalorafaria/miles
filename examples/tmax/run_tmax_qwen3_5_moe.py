@@ -23,7 +23,9 @@ Args (in addition to run_tmax_qwen3_5.py's):
       instead of only the new rows: correct, just larger responses.
   --mtp-training: train the MTP layer (--enable-mtp-training, loss factor 0.2) and decode with it as an EAGLE
       draft (default: off).
-  --sglang-moe-runner-backend: SGLang MoE kernels, empty for SGLang's default (default: flashinfer_cutlass, which
+  --sglang-ep-size: SGLang expert parallelism within an engine, 0 for SGLang's default (default: 0). With
+      --rollout-num-gpus-per-engine N > 1, N shards the experts as upstream's 35B-A3B recipes do.
+  --sglang-moe-runner-backend: SGLang MoE kernels, auto for SGLang's own choice (default: flashinfer_cutlass, which
       upstream's Qwen3.5-35B-A3B recipe requires on B300).
 
 =====================
@@ -62,6 +64,7 @@ class MoeScriptArgs(dense.ScriptArgs):
     expert_model_parallel_size: int = 8
     rollout_routing_replay: bool = True
     mtp_training: bool = False
+    sglang_ep_size: int = 0
     sglang_moe_runner_backend: str = "flashinfer_cutlass"
 
     def recipe_for(self, model_name: str) -> dense._Recipe:
@@ -71,8 +74,9 @@ class MoeScriptArgs(dense.ScriptArgs):
         out = f"--expert-model-parallel-size {self.expert_model_parallel_size} --expert-tensor-parallel-size 1 "
         if self.rollout_routing_replay:
             out += "--use-rollout-routing-replay "
-        if self.sglang_moe_runner_backend:
-            out += f"--sglang-moe-runner-backend {self.sglang_moe_runner_backend} "
+        if self.sglang_ep_size:
+            out += f"--sglang-ep-size {self.sglang_ep_size} "
+        out += f"--sglang-moe-runner-backend {self.sglang_moe_runner_backend} "
         # The model script builds the MTP layer (--mtp-num-layers 1), and conversion keeps it; without
         # --enable-mtp-training Miles drops it from the trained model, and the engines decode without a draft.
         if self.mtp_training:

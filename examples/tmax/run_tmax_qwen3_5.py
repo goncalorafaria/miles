@@ -55,6 +55,8 @@ Args:
   --async-data-buffer-capacity-factor: fully-async only; finished groups buffered ahead of training, in batches
       (default: 2). open-instruct's --async_steps 4 lets generation run 4 steps ahead.
   --optimizer-cpu-offload: keep Adam state in host RAM (default: on; turn off on 80GB+ GPUs).
+  --rollout-num-gpus-per-engine: GPUs per SGLang engine (default: 1; see sgl-project/sglang#21039 before raising
+      it for a dense model).
   --num-prompts: keep only the first N prompts, for smoke tests (default: all).
   --start-failure: zero | drop, for a sandbox that never starts (default: zero, open-instruct's behavior).
   --episode-timeout-s: wall-clock cap per episode, 0 for none (default: 0).
@@ -215,6 +217,9 @@ class ScriptArgs(command_utils.ExecuteTrainConfig):
     async_max_concurrent_samples: int = 0  # 0 keeps Miles' default of one training batch
     async_data_buffer_capacity_factor: float = 2.0
     sglang_mem_fraction_static: float = 0.7
+    # SGLang TP>1 produced garbage for dense Qwen3.5 (sgl-project/sglang#21039), hence one GPU per engine; a model too
+    # big for one GPU (Qwen3.5-35B-A3B on 80GB) needs more.
+    rollout_num_gpus_per_engine: int = 1
     num_prompts: int = 0
     max_steps: int = 64
     # podman: containers on podman daemons this job runs; gateway: on a LiteRegistry podman fleet (tmax_gateway.py).
@@ -554,10 +559,9 @@ def run_execute(args: ScriptArgs) -> None:
             "--optimizer-cpu-offload " "--overlap-cpu-optimizer-d2h-h2d " "--use-precision-aware-optimizer "
         )
 
-    # SGLang TP>1 produces garbage output for Qwen3.5 (sgl-project/sglang#21039), hence one GPU per engine.
     # Engine-side parsers split reasoning_content / tool_calls out of each turn; --tito-model does not set them.
     sglang_args = (
-        "--rollout-num-gpus-per-engine 1 "
+        f"--rollout-num-gpus-per-engine {args.rollout_num_gpus_per_engine} "
         f"--sglang-mem-fraction-static {args.sglang_mem_fraction_static} "
         "--sglang-reasoning-parser qwen3 "
         "--sglang-tool-call-parser qwen3_coder "

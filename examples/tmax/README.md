@@ -40,7 +40,7 @@ Validated end to end on B300s (Beaker `ai2/holmes`):
 | `generate.py` | Reward function (`None` drops the group), the generate function that adds an SGLang OPD teacher's log-probs, and pure OPD's reward post-process |
 | `tmax_metrics.py` | Per-rollout W&B metrics open-instruct logs: episodes and tools, solve rates before the filter, trained-sample lengths and advantages |
 | `tmax_prompts.py` | open-instruct's system prompt |
-| `configs/` | Experiment configs: open-instruct's production recipe on one node (`prod_1node.yaml`) and on its 4 nodes (`prod_4node.yaml`), and 4-GPU smoke tests (`smoke_2node.yaml` spans 2 nodes, `smoke_gateway.yaml` uses the podman fleet, `smoke_opd*.yaml` distill; `smoke_moe_sync.yaml` is Qwen3.5-35B-A3B) |
+| `configs/` | Experiment configs: open-instruct's production recipe on one node (`prod_1node.yaml`) and on its 4 nodes (`prod_4node.yaml`), and 4-GPU smoke tests (`smoke_2node.yaml` spans 2 nodes, `smoke_gateway.yaml` uses the podman fleet, `smoke_opd*.yaml` distill; `smoke_moe_sync*.yaml` are Qwen3.5-35B-A3B) |
 | `beaker/` | `submit.py` (config -> Beaker job, pinned to a commit), the job's entrypoint, open-instruct's vendored podman bring-up, and the registry mirror tooling |
 | `docker/` | `build_train_image.sh`: the training image, built from `docker/Dockerfile` at `HEAD` and uploaded to Beaker under its commit |
 | `tools/` | `watch_run.py` (one line per step, slow sync or failure of a running Beaker experiment) and `check_samples.py` (trained samples vs episode traces) |
@@ -95,7 +95,9 @@ Sandboxes come from one of two backends (`sandbox_backend`):
 
 `run_tmax_qwen3_5_moe.py` runs the same recipe for Qwen3.5-35B-A3B, with every field of the dense launcher plus
 `expert_model_parallel_size`, `rollout_routing_replay` (R3, on), `mtp_training` (off; with it the MTP head is trained
-and drafts EAGLE speculative decoding) and `sglang_moe_runner_backend`; its docstring has the details. The default
+and drafts EAGLE speculative decoding), `sglang_ep_size` and `sglang_moe_runner_backend`; its docstring has the
+details. On 80GB GPUs the bf16 weights (72 GB) need `rollout_num_gpus_per_engine` > 1, as in
+`configs/smoke_moe_sync_ceres.yaml` (8x H100). The default
 student, `Qwen3.5-35B-A3B-tmax-template`, is
 [`shatu/Qwen3.5-35B-A3B`](https://huggingface.co/shatu/Qwen3.5-35B-A3B) (private): `Qwen/Qwen3.5-35B-A3B` with
 `hamishivi/Qwen3.5-9B`'s chat-template change (see [Findings](#required-settings)).
