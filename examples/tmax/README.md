@@ -16,6 +16,7 @@ Validated end to end on B300s (Beaker `ai2/holmes`):
 | Pure on-policy distillation, fully async, 4 H100s (Jupiter) | `configs/smoke_opd_4b_async_jupiter_fused.yaml` | `allenai/tmax-4b` into `hamishivi/Qwen3.5-4B`, 3 steps, 2026-10-23 |
 | Pure on-policy distillation with the teacher on an SGLang server, same and cross size | `configs/smoke_opd_{4b,9b_to_4b}_sglang_jupiter.yaml` | `allenai/tmax-4b` and `allenai/tmax-9b` into `hamishivi/Qwen3.5-4B`, 3 steps each, 2026-10-23 |
 | Pure OPD across sizes on 4 nodes, the teacher on 2 SGLang servers on the rollout nodes | `configs/prod_4node_gateway_opd_9b_to_4b.yaml` | `allenai/tmax-9b` into `hamishivi/Qwen3.5-4B`, 194 steps, 2026-10-28 |
+| Synchronous GRPO for Qwen3.5 MoE, EP 4 and R3, 4 GPUs | `run_tmax_qwen3_5_moe.py`, `configs/smoke_moe_sync.yaml` | Qwen3.5-35B-A3B, 3 steps, 2026-10-20 |
 | open-instruct's production recipe, fully async on 4 nodes (32x B300), 64k context | `configs/prod_4node.yaml` | Qwen3.5-9B, training on Beaker since 2026-10-16 |
 
 | Read | For |
@@ -344,6 +345,16 @@ Synchronous GRPO, Qwen3.5-9B:
 | 0 | 62% | 373 s | 0.014 | 0.36 | 3e-4 |
 | 1 | 56% | 250 s | 0.0068 | 0.21 | 3e-4 |
 | 2 | 25% | 109 s | -0.0038 | 0.21 | 3e-4 |
+
+Synchronous GRPO, Qwen3.5-35B-A3B (`smoke_moe_sync.yaml`: EP 4, R3, one GPU per engine; Beaker
+01M5BY9E3KFB46DGXS7WDHX2Z5, 2026-10-20). Step 0's groups were all uniform, so its advantages, loss and gradient are 0.
+Weight syncs took 14-17 s; steps took 2088 / 1133 / 472 s, mostly rollout (the first includes sandbox image pulls).
+
+| Step | Episodes submitted | Mean episode time | pg_loss | grad_norm | train/rollout KL | train/rollout \|Δ log-prob\| |
+|---|---|---|---|---|---|---|
+| 0 | 75% | 332 s | 0 | 0 | 5e-4 | 0.0094 |
+| 1 | 62% | 216 s | 0.039 | 0.22 | 4e-4 | 0.0076 |
+| 2 | 19% | 156 s | -0.011 | 0.063 | 4e-4 | 0.0078 |
 
 Fully-async GRPO, Qwen3.5-9B, 2 training + 2 rollout GPUs: 4 steps, grad_norm 0.40 / 0.28 / 0.23 / 0.22,
 train/rollout KL 3e-4 to 4e-4, at most 1 weight version stale, no stale or aborted groups.
