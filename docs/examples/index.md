@@ -22,6 +22,7 @@ End-to-end training workflows — the place to start.
 - **[swe-agent-harbor-docker](/examples/swe-agent-harbor-docker)**: Trains coding and terminal agents with Harbor-managed local Docker sandboxes and verifier rewards.
 - **[tmax](/examples/tmax)**: Terminal-RL on the TMax tasks with per-task Podman sandboxes: sync and fully-async GRPO, plus on-policy distillation.
   - **[beaker](/examples/tmax/beaker)**: Running the TMax experiments on AI2's Beaker: submissions, resume, images, mirrors, monitoring and failure triage.
+- **[tmax_search](/examples/tmax-search)**: Search-agent RL on BrowseComp-style questions with a local search corpus and an LLM judge, Prime-RL's recipe on the TMax setup.
 
 ## [Infra Features](/examples/infra-features)
 
