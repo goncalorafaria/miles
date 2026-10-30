@@ -124,13 +124,13 @@ def test_without_the_filter_hooks_agent_metrics_come_from_the_trained_samples(lo
 
 def test_missing_rewards_are_left_out():
     samples = _group(0, [None, 1.0, 0.0, None])
-    metrics = tmax_metrics._trained_metrics(ARGS, 0, samples)
+    metrics = tmax_metrics.trained_metrics(ARGS, 0, samples)
     assert metrics["rollout/trained/advantage_max"] == pytest.approx(0.5)
 
 
 def test_pure_opd_logs_no_reward_advantage():
     """Pure OPD trains on reward 0 (generate.opd_pure_rewards): the centered task reward is not the advantage."""
     args = SimpleNamespace(**{**vars(ARGS), "custom_reward_post_process_path": "generate.opd_pure_rewards"})
-    metrics = tmax_metrics._trained_metrics(args, 0, _group(0, [1.0, 0.0]))
+    metrics = tmax_metrics.trained_metrics(args, 0, _group(0, [1.0, 0.0]))
     assert metrics["rollout/trained/response_len_solved_mean"] == 100
     assert not any(k.startswith("rollout/trained/advantage") for k in metrics)

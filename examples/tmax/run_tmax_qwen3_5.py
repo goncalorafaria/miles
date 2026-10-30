@@ -105,10 +105,8 @@ Smoke test on four 80GB+ GPUs:
       --rollout-batch-size 2 --n-samples-per-prompt 4 --num-rollout 2 --max-seq-len 16384
 """
 
-import dataclasses
 import json
 import os
-import shlex
 import subprocess
 import sys
 import time
@@ -118,13 +116,11 @@ from pathlib import Path
 from typing import Literal
 
 import pandas as pd
-import tmax_wandb
 import typer
-import yaml
+from launch_common import apply_yaml_config, fetch_command, wandb_args
 from tmax_prompts import TMAX_SYSTEM_PROMPT
 
 from miles.utils.external_utils import command_utils
-from miles.utils.typer_utils import SCRIPT_ENV_VAR_PREFIX
 
 _SCRIPT_DIR = Path(__file__).resolve().parent
 _OPD_TEACHER_PORT = 30100  # the first SGLang teacher on a node (--opd-teacher-mode sglang); the next ones count up
@@ -384,7 +380,7 @@ def prepare(args: ScriptArgs):
     _write_prompt_data(args)
     for name in filter(None, [args.model_name, args.opd_teacher]):
         recipe = _RECIPES[name]
-        U.exec_command_cpu(_fetch_command(recipe.hf_repo, f"{args.model_dir}/{name}"))
+        U.exec_command_cpu(fetch_command(recipe.hf_repo, f"{args.model_dir}/{name}"))
         if name == args.opd_teacher and args.opd_mode == "sglang":
             continue  # SGLang serves the HF checkpoint
         U.convert_checkpoint(
@@ -395,14 +391,6 @@ def prepare(args: ScriptArgs):
             hf_checkpoint=f"{args.model_dir}/{name}",
             megatron_path=args.megatron_path,
         )
-
-
-def _fetch_command(hf_repo: str, dst: str) -> str:
-    """Download a Hugging Face repo into dst, or copy a local HF checkpoint there once: the model dir keeps it after
-    the run directory it came from is cleaned up."""
-    if not hf_repo.startswith("/"):
-        return f"hf download {hf_repo} --local-dir {dst}"
-    return f"if [ ! -d {dst} ]; then rm -rf {dst}.tmp && cp -r {hf_repo} {dst}.tmp && mv {dst}.tmp {dst}; fi"
 
 
 def _write_prompt_data(args: ScriptArgs) -> None:
@@ -592,7 +580,7 @@ def execute(args: ScriptArgs):
         f"{agent_args} "
         f"{optimizer_args} "
         f"{grpo_args} "
-        f"{_wandb_args(args)} "
+        f"{wandb_args(__file__, run_id=args.run_id, exp_name=args.exp_name, project=args.wandb_project, entity=args.wandb_entity)} "
         f"{perf_args} "
         f"{sglang_args} "
         f"{misc_args} "
@@ -721,57 +709,6 @@ class _OpdTeacherServer:
         return host
 
 
-def _wandb_args(args: ScriptArgs) -> str:
-    """Default wandb flags (on when WANDB_API_KEY is set) with this experiment's overrides applied in place.
-
-    A named experiment logs all its restarts into one run (group and run id from exp_name), which a resume then
-    continues, instead of one run per Beaker retry.
-    """
-    tokens = shlex.split(command_utils.get_default_wandb_args(__file__, run_id=args.run_id))
-    if not tokens:
-        return ""
-    # The launcher logs this command line (and prints it again if the job fails), so the API key stays off it:
-    # without --wandb-key, wandb reads WANDB_API_KEY, which every process of the job inherits.
-    if "--wandb-key" in tokens:
-        del tokens[tokens.index("--wandb-key") : tokens.index("--wandb-key") + 2]
-    overrides = {"--wandb-project": args.wandb_project, "--wandb-team": args.wandb_entity}
-    if args.exp_name:
-        overrides |= {
-            "--wandb-group": args.exp_name,
-            "--wandb-run-id": tmax_wandb.run_id(args.exp_name),
-        }
-    for flag, value in overrides.items():
-        if not value:
-            continue
-        if flag in tokens:
-            tokens[tokens.index(flag) + 1] = value
-        else:
-            tokens += [flag, value]
-    return shlex.join(tokens) + " "
-
-
-def _apply_yaml_config(argv: list[str]) -> list[str]:
-    """Accept ``<command> <experiment>.yaml [--flag value ...]``, as open-instruct's ArgumentParserPlus does.
-
-    The YAML's keys (ScriptArgs fields) become MILES_SCRIPT_* env vars, which dataclass_cli reads as defaults, so
-    flags on the command line still override them, and an already-exported env var wins over the file. A top-level
-    ``beaker:`` section is for beaker/submit.py and ignored here.
-    """
-    configs = [arg for arg in argv[1:] if arg.endswith((".yaml", ".yml"))]
-    if not configs:
-        return argv
-    assert len(configs) == 1, f"pass at most one experiment config, got {configs}"
-    config = yaml.safe_load(Path(configs[0]).read_text()) or {}
-    config.pop("beaker", None)
-    unknown = set(config) - {f.name for f in dataclasses.fields(ScriptArgs)}
-    assert not unknown, f"{configs[0]} sets unknown fields: {sorted(unknown)}"
-    for key, value in config.items():
-        if value is not None:
-            env_value = str(value).lower() if isinstance(value, bool) else str(value)
-            os.environ.setdefault(f"{SCRIPT_ENV_VAR_PREFIX}{key.upper()}", env_value)
-    return [arg for arg in argv if arg != configs[0]]
-
-
 if __name__ == "__main__":
-    sys.argv = _apply_yaml_config(sys.argv)
+    sys.argv = apply_yaml_config(sys.argv, ScriptArgs)
     app()

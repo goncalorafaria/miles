@@ -63,7 +63,7 @@ def log_rollout_data(rollout_id, args, samples, rollout_extra_metrics, rollout_t
     solve_rates, episodes = _drain()
     if not episodes:  # the filter hooks are not installed: describe the trained episodes instead
         episodes = [s.metadata["agent_metrics"] for s in samples if (s.metadata or {}).get("agent_metrics")]
-    metrics = _agent_metrics(episodes) | _unfiltered_metrics(solve_rates) | _trained_metrics(args, rollout_id, samples)
+    metrics = _agent_metrics(episodes) | unfiltered_metrics(solve_rates) | trained_metrics(args, rollout_id, samples)
     if metrics:
         metrics["rollout/step"] = compute_rollout_step(args, rollout_id)
         tracking.log(args, metrics, step_key="rollout/step")
@@ -122,7 +122,7 @@ def _agent_metrics(episodes: list[dict]) -> dict[str, float]:
     return metrics
 
 
-def _unfiltered_metrics(solve_rates: list[float]) -> dict[str, float]:
+def unfiltered_metrics(solve_rates: list[float]) -> dict[str, float]:
     if not solve_rates:
         return {}
     n = len(solve_rates)
@@ -137,7 +137,7 @@ def _unfiltered_metrics(solve_rates: list[float]) -> dict[str, float]:
     return metrics
 
 
-def _trained_metrics(args, rollout_id: int, samples: list[Sample]) -> dict[str, float]:
+def trained_metrics(args, rollout_id: int, samples: list[Sample]) -> dict[str, float]:
     if not samples:
         return {}
     metrics = {"rollout/trained/samples_total": (rollout_id + 1) * args.rollout_batch_size * args.n_samples_per_prompt}

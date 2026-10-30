@@ -7,6 +7,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "examples" / "tmax"))
 
+import launch_common  # noqa: E402
 import run_tmax_qwen3_5 as launcher  # noqa: E402
 
 
@@ -47,10 +48,10 @@ def test_a_same_architecture_teacher_takes_no_gpu():
 
 
 def test_a_hub_recipe_is_downloaded_and_a_local_checkpoint_copied_once():
-    assert launcher._fetch_command("allenai/tmax-9b", "/models/tmax-9b") == (
+    assert launch_common.fetch_command("allenai/tmax-9b", "/models/tmax-9b") == (
         "hf download allenai/tmax-9b --local-dir /models/tmax-9b"
     )
-    copy = launcher._fetch_command("/runs/x/hf/step_79", "/models/step80")
+    copy = launch_common.fetch_command("/runs/x/hf/step_79", "/models/step80")
     assert copy.startswith("if [ ! -d /models/step80 ]") and "cp -r /runs/x/hf/step_79 /models/step80.tmp" in copy
 
 
