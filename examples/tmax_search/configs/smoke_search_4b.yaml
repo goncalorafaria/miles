@@ -35,6 +35,7 @@ beaker:
   workspace: ai2/oe-agents-holmes
   budget: ai2/oe-omai
   priority: urgent
+  min_runtime: 8h                             # Holmes schedules jobs only with a minimum runtime
   retries: 0
   gpus: 3
   shared_memory: 256GiB
