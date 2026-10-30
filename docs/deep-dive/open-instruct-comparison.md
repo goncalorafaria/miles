@@ -96,7 +96,7 @@ Where the agent loop runs differs:
 
 | open-instruct (vLLM) | Miles (SGLang, as resolved in production) | |
 |---|---|---|
-| `--lm_head_fp32 true`: vLLM patched to compute Qwen3.5 logits in fp32 | `enable_fp32_lm_head = False`; the trainer's logits are bf16 too | Missing; worth a third of the train/rollout gap ([measured](https://github.com/shatu/miles/blob/shashank/tmax-terminal-rl/examples/tmax/INVESTIGATIONS.md)) |
+| `--lm_head_fp32 true`: vLLM patched to compute Qwen3.5 logits in fp32 | `enable_fp32_lm_head = False` unless `--sglang-enable-fp32-lm-head`; the trainer's logits are bf16 unless `--fp32-lm-head` | Available, not yet used by the TMax configs; worth a third of the train/rollout gap ([measured](https://github.com/shatu/miles/blob/shashank/tmax-terminal-rl/examples/tmax/INVESTIGATIONS.md)) |
 | Attention: vLLM's automatic choice on Blackwell | `attention_backend = triton` (SGLang's choice for Qwen3.5 on B300) | `trtllm_mha` is 1.75× faster at 32k context ([measured](https://github.com/shatu/miles/blob/shashank/tmax-terminal-rl/examples/tmax/INVESTIGATIONS.md)) |
 | `gpu_memory_utilization 0.9` | `mem_fraction_static 0.8` | KV usage stays at a few percent; not a limit |
 | `mamba_ssm_cache_dtype = "float32"` | SGLang defaults the linear-attention state to float32 | Same |
@@ -115,7 +115,7 @@ Where the agent loop runs differs:
 | Advantages | `centered`: reward minus the group mean | `grpo --disable-grpo-std-normalization` (same) |
 | Aggregation | Token denominator, but each (rank, micro-batch) shard is weighted separately, so tokens in sparse shards weigh more | Exact global token mean, `--calculate-per-token-loss` |
 | Packing | `--pack_length 67584`, one pack per micro-batch; packs not divisible by DP are dropped | Dynamic batching, `--max-tokens-per-gpu 34816` (≥ max_seq_len / CP), balanced, nothing dropped |
-| Logits | `--lm_head_fp32 true` in trainer and vLLM | bf16 output layer; SGLang's `--sglang-enable-fp32-lm-head` exists but is not passed. bf16 rounding is most of the train/rollout gap, and only fixing both sides helps (see [Inference engines](#inference-engines)) |
+| Logits | `--lm_head_fp32 true` in trainer and vLLM (the trainer's computed in Liger's chunked loss) | bf16 output layer unless `--fp32-lm-head` (the same fp32 GEMM of the bf16 operands, the whole logits tensor at once), which requires `--sglang-enable-fp32-lm-head`; the TMax configs pass neither yet. bf16 rounding is most of the train/rollout gap, and only fixing both sides helps (see [Inference engines](#inference-engines)) |
 | Log-prob memory | `--use_liger_grpo_loss --liger_grpo_loss_chunk_size 8` (open-instruct's tiled LM-head loss) | `--log-probs-backend fused` |
 | Optimizer | AdamW, lr 1e-6, betas (0.9, 0.999), eps 1e-8, wd 0, constant LR, grad clip 1.0 | Adam, lr 1e-6, betas (0.9, 0.999), eps 1e-8, wd 0, constant LR, `--clip-grad 1.0` (beta2 was 0.98 before branch `shashank/tmax-oi-parity`) |
 | Seed | 42 | `--seed 42` (Miles' default 1234 before branch `shashank/tmax-oi-parity`; rollout seed 42) |
@@ -226,7 +226,7 @@ flags `run_tmax_qwen3_5.py` adds.
 | `--truncated_importance_sampling_ratio_cap 0.0` | TIS off (default) |
 | `--advantage_normalization_type centered` | `--advantage-estimator grpo --disable-grpo-std-normalization` |
 | `--loss_fn dppo --dppo_divergence_type tv --dppo_divergence_threshold 0.1` | `--policy-loss-type dppo_tv --dppo-tv-threshold 0.1` |
-| `--lm_head_fp32 true` | Not set |
+| `--lm_head_fp32 true` | Not set (`--fp32-lm-head --sglang-enable-fp32-lm-head` would be it) |
 | `--use_liger_grpo_loss --liger_grpo_loss_chunk_size 8` | `--log-probs-backend fused` |
 | `--gradient_checkpointing` | `--recompute-granularity full --recompute-method uniform --recompute-num-layers 1` |
 | `--seed 42` | `--seed 42` |
