@@ -9,10 +9,11 @@ Events:
 * `SYNC ...`: a weight sync that failed, or took longer than --slow-sync seconds (all of them at 0);
 * `FAIL: ...`: a failure signal in the head log (a failed cell call, Ray task errors, NCCL errors, OOM, a trainer
   traceback, engines being killed);
-* `REPLICA EXITED ...` for every replica job that exited, and `HEAD EXITED` before the watcher stops.
+* `REPLICA EXITED ...` for every job that exited (the Miles task's replicas and, in a search run, its service tasks),
+  and `HEAD EXITED` before the watcher stops.
 
-Every --interval seconds it reads `beaker experiment get` and the head job's log (replica 0) since its last successful
-read. It remembers what it printed, and when it last read the log, in --state-dir, so a restarted watcher neither
+Every --interval seconds it reads `beaker experiment get` and the head job's log (replica 0 of the --task task) since
+its last successful read. It remembers what it printed, and when it last read the log, in --state-dir, so a restarted watcher neither
 repeats itself nor skips what was logged while it was down (up to --max-gap), and appends the raw log there
 (`head.log`). It stops when the head job exits or, with --until-steps N, once N steps trained and a weight sync
 followed each. Each stdout line is one event, so it suits a monitor that turns lines into notifications.
@@ -47,6 +48,7 @@ def main() -> None:
     parser.add_argument("--slow-sync", type=float, default=0, help="report only syncs that fail or exceed this (s)")
     parser.add_argument("--until-steps", type=int, default=0, help="stop once this many steps trained and synced")
     parser.add_argument("--interval", type=float, default=90)
+    parser.add_argument("--task", default="miles-tmax", help="the Miles task's name (beaker/submit.py names it)")
     parser.add_argument("--max-gap", type=float, default=3 * 3600, help="read at most this far back (s)")
     args = parser.parse_args()
 
@@ -58,13 +60,16 @@ def main() -> None:
     last_read = state / "last_read.txt"
     while True:
         jobs = _jobs(args.experiment)
-        heads = [job for job in jobs or [] if job["rank"] == 0]
+        heads = [job for job in jobs or [] if job["task"] == args.task and job["rank"] == 0]
         if not heads:  # beaker unreachable, or no job scheduled yet
             time.sleep(args.interval)
             continue
         for job in jobs:
             if job["exited"]:
-                seen.emit(f"REPLICA EXITED rank={job['rank']} job={job['id']} at={job['exited']} code={job['code']}")
+                seen.emit(
+                    f"REPLICA EXITED task={job['task']} rank={job['rank']} job={job['id']} at={job['exited']} "
+                    f"code={job['code']}"
+                )
         head = heads[-1]  # a retry adds a new job per replica
         # Read from the last successful read, with a minute of overlap (`seen` drops the repeats): a slow or failed
         # read, or a watcher restarted after a while, leaves no gap.
@@ -119,6 +124,7 @@ def _jobs(experiment: str) -> list[dict] | None:
     return [
         {
             "id": job["id"],
+            "task": job.get("name", ""),
             "rank": (job.get("execution") or {}).get("replicaRank") or 0,
             "exited": (job.get("status") or {}).get("exited") or "",
             "code": (job.get("status") or {}).get("exitCode", ""),
