@@ -119,9 +119,14 @@ def service_tasks(
         assert task["name"] != "judge" or f"--model={judge_model}" in json.dumps(task["command"]), judge_model
         if task["name"] in counts:
             task["replicas"] = counts[task["name"]]
-        # The Miles task's priority and minimum runtime (Prime-RL gives the judge 8 h, the CPU services 0 h; a smoke
-        # runs without one, on unallocated capacity).
-        task["context"] = {**task["context"], "priority": context["priority"], "minRuntime": context["min_runtime"]}
+        # The Miles task's priority; its minimum runtime for the tasks Prime-RL guarantees one (the judge, 8 h there),
+        # while the CPU services keep none, as in Prime-RL. A smoke runs without one, on unallocated capacity.
+        guaranteed = task["context"].get("minRuntime", "0h") != "0h"
+        task["context"] = {
+            **task["context"],
+            "priority": context["priority"],
+            "minRuntime": context["min_runtime"] if guaranteed else "0h",
+        }
     return tasks
 
 
