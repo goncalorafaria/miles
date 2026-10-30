@@ -25,6 +25,7 @@ from megatron.core.utils import get_model_config
 from megatron.training.global_vars import get_args
 from megatron.training.training import get_model
 
+from miles.backends.megatron_utils.fp32_lm_head import install_fp32_lm_head
 from miles.backends.megatron_utils.ft.indep_dp import allreduce_grads_and_losses_across_replicas
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.backends.megatron_utils.lora.native import wrap_model_provider_with_lora
@@ -178,6 +179,8 @@ def setup_model_and_optimizer(
         model = get_model(provider_func, ModelType.encoder_or_decoder)
     for model_chunk in model:
         model_chunk.lora_attached = lora_attached
+    if role == "actor" and args.fp32_lm_head:
+        install_fp32_lm_head(model)
 
     if args.debug_disable_optimizer:
         if is_first_replica_megatron_main_rank():

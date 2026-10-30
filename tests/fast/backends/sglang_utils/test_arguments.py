@@ -80,3 +80,23 @@ def test_score_centering_enables_fp32_lm_head(loss_type: str | None, explicit_fp
     validate_args(args)
 
     assert args.sglang_enable_fp32_lm_head is (explicit_fp32 or loss_type == "score_centering")
+
+
+@pytest.mark.parametrize(
+    ("engine_fp32", "loss_type", "ok"),
+    [(True, "policy_loss", True), (False, "score_centering", True), (False, "policy_loss", False)],
+)
+def test_trainer_fp32_lm_head_needs_the_engine_one(engine_fp32: bool, loss_type: str, ok: bool) -> None:
+    """--fp32-lm-head narrows the train/rollout gap only with fp32 engine logits: rejected at startup without them."""
+    args = _parse_sglang_args(["--sglang-enable-fp32-lm-head"] if engine_fp32 else [])
+    args.loss_type = loss_type
+    args.rollout_num_gpus_per_engine = 1
+    args.true_on_policy_mode = False
+    args.use_session_server = False
+    args.fp32_lm_head = True
+
+    if ok:
+        validate_args(args)
+    else:
+        with pytest.raises(ValueError, match="--sglang-enable-fp32-lm-head"):
+            validate_args(args)

@@ -191,6 +191,13 @@ def validate_args(args):
         # This trades serving compute/memory for precision; per-engine overrides still win.
         args.sglang_enable_fp32_lm_head = True
 
+    if getattr(args, "fp32_lm_head", False) and not args.sglang_enable_fp32_lm_head:
+        # Checked after the score-centering override above, which turns the engine flag on itself.
+        raise ValueError(
+            "--fp32-lm-head needs --sglang-enable-fp32-lm-head: removing the bf16 rounding of the trainer's "
+            "logits narrows the train/rollout log-prob gap only when the rollout engine's logits are fp32 too"
+        )
+
     if args.true_on_policy_mode:
         # True on-policy mode overrides the parsed setting to keep inference deterministic.
         args.sglang_enable_deterministic_inference = True
