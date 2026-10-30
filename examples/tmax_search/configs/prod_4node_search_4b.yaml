@@ -45,7 +45,7 @@ beaker:
   nodes: 4
   gpus: 8
   shared_memory: 512GiB
-  image: docker.io/radixark/miles:dev-202610151741
+  image: beaker:shashankg/tmax-miles-train-20261029  # rebuild of radixark/miles:dev-202610151741, examples/tmax/docker
   keep_last_n_checkpoints: 3                  # Prime-RL's ckpt keep_last 3
   env:
     NCCL_DEBUG: WARN

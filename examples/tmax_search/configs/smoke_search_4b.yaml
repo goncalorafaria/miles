@@ -39,7 +39,7 @@ beaker:
   retries: 0
   gpus: 3
   shared_memory: 256GiB
-  image: docker.io/radixark/miles:dev-202610151741
+  image: beaker:shashankg/tmax-miles-train-20261029  # rebuild of radixark/miles:dev-202610151741, examples/tmax/docker
   # Prime-RL's search services as tasks of this experiment (examples/tmax_search/beaker/services.py), fewer replicas.
   search_services:
     replicas: {terminal: 2, localsearch: 2}
