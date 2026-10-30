@@ -29,10 +29,19 @@
 #   GATEWAY_MIN_REPLICAS      podman replicas the gateway must list before training starts (default: 1)
 #   LITEREGISTRY_VERSION      the gateway's literegistry release (default: 1.0.63)
 #   LITEREGISTRY_PODMAN_CLIENT_VERSION   the sandboxes' client, literegistry-podman-client (default: 0.1.7)
+# Other launchers (submit.py sets these from the config):
+#   LAUNCHER                  the launcher to run (default: examples/tmax/run_tmax_qwen3_5.py)
+#   SANDBOX_BACKEND           overrides the config's sandbox_backend; "none" starts no sandboxes (the search recipe)
+# The search recipe (examples/tmax_search), whose services are tasks of the same experiment: the head waits for them
+# before training, exporting their gateway as SEARCH_GATEWAY_URL, and stops them once training succeeded:
+#   SEARCH_ENDPOINT_DIR       their head registry's endpoint files (examples/tmax_search/beaker/wait_for_services.py)
+#   SEARCH_SERVICE_NAME, SEARCH_JUDGE_MODEL   the search service and judge model to probe
+#   SEARCH_LIFECYCLE_DIR      where `complete` tells the service tasks to exit 0
 set -euxo pipefail
 
 REPO=$(cd "$(dirname "$(readlink -f "$0")")/../../.." && pwd)
 CONFIG="${1:?usage: tmax_beaker_entry.sh <config.yaml>}"
+LAUNCHER=${LAUNCHER:-examples/tmax/run_tmax_qwen3_5.py}
 SANDBOX_SHARDS=${SANDBOX_SHARDS:-1}
 NUM_NODES=${NUM_NODES:-1}
 RANK=${BEAKER_REPLICA_RANK:-0}
@@ -69,7 +78,7 @@ export PYTHONFAULTHANDLER=${PYTHONFAULTHANDLER:-1}  # a crash of any Python proc
  for pid in $(pgrep -f 'gcs_server|raylet' || true); do
     tr '\0' '\n' < "/proc/$pid/environ" 2>/dev/null | grep -E '^RAY_(health_check|gcs_rpc_server_reconnect)' | sed "s/^/ray pid $pid: /"
  done) &
-SANDBOX_BACKEND=$(python -c 'import sys, yaml; print((yaml.safe_load(open(sys.argv[1])) or {}).get("sandbox_backend", "podman"))' "$CONFIG")
+SANDBOX_BACKEND=${SANDBOX_BACKEND:-$(python -c 'import sys, yaml; print((yaml.safe_load(open(sys.argv[1])) or {}).get("sandbox_backend", "podman"))' "$CONFIG")}
 echo "sandbox backend: $SANDBOX_BACKEND"
 if [ "$NUM_NODES" -gt 1 ]; then
     HEAD_IP=$(getent hosts "$BEAKER_LEADER_REPLICA_HOSTNAME" | awk '{print $1; exit}')
@@ -279,7 +288,7 @@ fi
 export PYTHONPATH=$REPO
 export HF_HOME=${HF_HOME:-$(dirname "$MODEL_DIR")/hf_home}  # next to the models, so downloads are cached
 # EXTRA_ARGS is a shell-quoted flag list, hence eval.
-eval python examples/tmax/run_tmax_qwen3_5.py prepare "$CONFIG" "${EXTRA_ARGS:-}"
+eval python "$LAUNCHER" prepare "$CONFIG" "${EXTRA_ARGS:-}"
 if [ "$NUM_NODES" -gt 1 ]; then
     GPUS=$(nvidia-smi -L | wc -l)
     PYTHONUNBUFFERED=1 ray start --head --node-ip-address "$HEAD_IP" --port $RAY_PORT --num-gpus "$GPUS" \
@@ -316,12 +325,22 @@ if [ "$SANDBOX_BACKEND" = gateway ]; then
     trap 'timeout 90 python examples/tmax/tmax_gateway.py close-all --timeout-s 60 || true' EXIT
     trap 'exit 143' TERM INT
 fi
-eval python examples/tmax/run_tmax_qwen3_5.py execute "$CONFIG" "${EXTRA_ARGS:-}" &
+if [ -n "${SEARCH_ENDPOINT_DIR:-}" ]; then
+    # Fails the task after its timeout (2 h) if the services never answer; propagation then stops them.
+    SEARCH_GATEWAY_URL=$(python examples/tmax_search/beaker/wait_for_services.py "$SEARCH_ENDPOINT_DIR" \
+        "$SEARCH_SERVICE_NAME" "$SEARCH_JUDGE_MODEL" "${SEARCH_SERVICES_WAIT_S:-7200}")
+    export SEARCH_GATEWAY_URL
+    echo "search services ready behind $SEARCH_GATEWAY_URL"
+fi
+eval python "$LAUNCHER" execute "$CONFIG" "${EXTRA_ARGS:-}" &
 wait $!
 # `ray job submit` also returns 0 when its log stream drops while the job still runs (2026-10-17): wait for the job
 # itself, and fail the replica unless it SUCCEEDED, before marking anything done.
 python examples/tmax/beaker/follow_ray_job.py &
 wait $!
+if [ -n "${SEARCH_LIFECYCLE_DIR:-}" ]; then
+    touch "$SEARCH_LIFECYCLE_DIR/complete"  # the service tasks exit 0, so the experiment finishes
+fi
 if [ "$NUM_NODES" -gt 1 ]; then
     python - "$HEAD_DONE" <<'PY'
 import sys, ray

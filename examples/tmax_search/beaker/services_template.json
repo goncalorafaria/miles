@@ -1,0 +1,425 @@
+{
+ "derived_from": {
+  "spec": "/weka/oe-adapt-default/stevenc/prime-rl/outputs/search-agent-curated100-quote-v3-fp32-lr1e-6/submissions/cd68d8338497451c80ed0cbc8a87e9e3/beaker.json",
+  "prime_rl_source_id": "a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37",
+  "run": "search-agent-curated100-quote-v3-fp32-lr1e-6"
+ },
+ "tasks": [
+  {
+   "name": "redis",
+   "image": {
+    "beaker": "01M27G8Y678BBF5MWXX6R12BSB"
+   },
+   "command": [
+    "bash",
+    "{PRIME_RL_SOURCE}/beaker/runtime/entrypoint.sh",
+    "launcher",
+    "python",
+    "-m",
+    "prime_rl_beaker.coupled",
+    "worker",
+    "--state-dir",
+    "{STATE_DIR}",
+    "--",
+    "bash",
+    "-lc",
+    "for LR_VENV in \"${VIRTUAL_ENV:-}\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \"$LR_VENV\" && -x \"$LR_VENV/bin/python3\" ]]; then export VIRTUAL_ENV=\"$LR_VENV\" PATH=\"$LR_VENV/bin:$PATH\"; break; fi; done; unset LR_VENV; set -euo pipefail; LR_GLOBAL_RANK=$((0 + ${BEAKER_REPLICA_RANK:-0})); LR_PREFERRED_PORT=$((55712 + LR_GLOBAL_RANK)); export LR_GLOBAL_RANK LR_PREFERRED_PORT; exec python3 -m literegistry.coop.ports run  --assignment \"PORT=${LR_PREFERRED_PORT}\" --identity \"{IDENTITY}:redis:${LR_GLOBAL_RANK}\" --host-id \"${BEAKER_NODE_HOSTNAME:-unknown-node}\" --command-json='[\"bash\",\"-lc\",\"for LR_VENV in \\\"${VIRTUAL_ENV:-}\\\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \\\"$LR_VENV\\\" && -x \\\"$LR_VENV/bin/python3\\\" ]]; then export VIRTUAL_ENV=\\\"$LR_VENV\\\" PATH=\\\"$LR_VENV/bin:$PATH\\\"; break; fi; done; unset LR_VENV; REDIS_ADVERTISE_HOST=\\\"${BEAKER_NODE_HOSTNAME:-$(hostname -f)}\\\"; export REDIS_ADVERTISE_HOST; exec literegistry redis --runtime=local --foreground=True --port=\\\"$PORT\\\" --advertise_host=\\\"$REDIS_ADVERTISE_HOST\\\" --head_registry=file://{RUN_DIR}/runtime/endpoint-files --data_dir={RUN_DIR}/runtime/services/.literegistry-coop/{IDENTITY}/redis-data --persistence=True\"]' --lock_dir=/tmp/literegistry-port-locks --startup_timeout=120"
+   ],
+   "hostNetworking": true,
+   "propagateFailure": true,
+   "propagatePreemption": true,
+   "datasets": [
+    {
+     "mountPath": "/weka",
+     "source": {
+      "weka": "oe-adapt-default"
+     }
+    }
+   ],
+   "result": {
+    "path": "/tmp/result"
+   },
+   "context": {
+    "priority": "urgent",
+    "minRuntime": "0h",
+    "autoResume": true
+   },
+   "constraints": {
+    "cluster": [
+     "ai2/jupiter"
+    ]
+   },
+   "envVars": [
+    {
+     "name": "PRIME_RL_BOOTSTRAP_REPORT_DIR",
+     "value": "{RUN_DIR}/startup"
+    },
+    {
+     "name": "PRIME_RL_SOURCE_ID",
+     "value": "a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37"
+    },
+    {
+     "name": "WANDB_CACHE_DIR",
+     "value": "{RUN_DIR}/wandb-cache"
+    },
+    {
+     "name": "WANDB_DATA_DIR",
+     "value": "{RUN_DIR}/wandb-staging"
+    },
+    {
+     "name": "XDG_CACHE_HOME",
+     "value": "/tmp/prime-rl-cache"
+    },
+    {
+     "name": "LOCAL_SEARCH_SERVICE_NAME",
+     "value": "{SEARCH_SERVICE_NAME}"
+    },
+    {
+     "name": "LOCAL_SEARCH_SUPPORT_DIR",
+     "value": "/weka/stevenc/tmax/lucene_files"
+    }
+   ]
+  },
+  {
+   "name": "gateway",
+   "image": {
+    "beaker": "01M27G8Y678BBF5MWXX6R12BSB"
+   },
+   "command": [
+    "bash",
+    "{PRIME_RL_SOURCE}/beaker/runtime/entrypoint.sh",
+    "launcher",
+    "python",
+    "-m",
+    "prime_rl_beaker.coupled",
+    "worker",
+    "--state-dir",
+    "{STATE_DIR}",
+    "--",
+    "bash",
+    "-lc",
+    "for LR_VENV in \"${VIRTUAL_ENV:-}\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \"$LR_VENV\" && -x \"$LR_VENV/bin/python3\" ]]; then export VIRTUAL_ENV=\"$LR_VENV\" PATH=\"$LR_VENV/bin:$PATH\"; break; fi; done; unset LR_VENV; set -euo pipefail; REGISTRY=head+file://{RUN_DIR}/runtime/endpoint-files; export REGISTRY; LR_GLOBAL_RANK=$((0 + ${BEAKER_REPLICA_RANK:-0})); LR_PREFERRED_PORT=$((55840 + LR_GLOBAL_RANK)); export LR_GLOBAL_RANK LR_PREFERRED_PORT; exec python3 -m literegistry.coop.ports run  --assignment \"PORT=${LR_PREFERRED_PORT}\" --identity \"{IDENTITY}:gateway:${LR_GLOBAL_RANK}\" --host-id \"${BEAKER_NODE_HOSTNAME:-unknown-node}\" --command-json='[\"bash\",\"-lc\",\"for LR_VENV in \\\"${VIRTUAL_ENV:-}\\\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \\\"$LR_VENV\\\" && -x \\\"$LR_VENV/bin/python3\\\" ]]; then export VIRTUAL_ENV=\\\"$LR_VENV\\\" PATH=\\\"$LR_VENV/bin:$PATH\\\"; break; fi; done; unset LR_VENV; GATEWAY_ADVERTISE_HOST=\\\"${BEAKER_NODE_HOSTNAME:-$(hostname -f)}\\\"; GATEWAY_URL=\\\"http://${GATEWAY_ADVERTISE_HOST}:${PORT}\\\"; export GATEWAY_URL; exec python3 -m literegistry.coop.endpoints run --root=file://{RUN_DIR}/runtime/endpoint-files --name=gateway --uri=\\\"${GATEWAY_URL}\\\" --healthcheck=http --command-json='\"'\"'[\\\"bash\\\",\\\"-lc\\\",\\\"for LR_VENV in \\\\\\\"${VIRTUAL_ENV:-}\\\\\\\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \\\\\\\"$LR_VENV\\\\\\\" && -x \\\\\\\"$LR_VENV/bin/python3\\\\\\\" ]]; then export VIRTUAL_ENV=\\\\\\\"$LR_VENV\\\\\\\" PATH=\\\\\\\"$LR_VENV/bin:$PATH\\\\\\\"; break; fi; done; unset LR_VENV; exec python -m prime_rl_beaker.gateway --registry=\\\\\\\"$REGISTRY\\\\\\\" --port=\\\\\\\"$PORT\\\\\\\" --advertise_host=\\\\\\\"$GATEWAY_ADVERTISE_HOST\\\\\\\" --workers=32 --registry_cache_ttl_seconds=5 --timeout=300 \\\"]'\"'\"'\"]' --lock_dir=/tmp/literegistry-port-locks --startup_timeout=120"
+   ],
+   "hostNetworking": true,
+   "propagateFailure": true,
+   "propagatePreemption": true,
+   "datasets": [
+    {
+     "mountPath": "/weka",
+     "source": {
+      "weka": "oe-adapt-default"
+     }
+    }
+   ],
+   "result": {
+    "path": "/tmp/result"
+   },
+   "context": {
+    "priority": "urgent",
+    "minRuntime": "0h",
+    "autoResume": true
+   },
+   "constraints": {
+    "cluster": [
+     "ai2/jupiter"
+    ]
+   },
+   "envVars": [
+    {
+     "name": "PRIME_RL_BOOTSTRAP_REPORT_DIR",
+     "value": "{RUN_DIR}/startup"
+    },
+    {
+     "name": "PRIME_RL_SOURCE_ID",
+     "value": "a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37"
+    },
+    {
+     "name": "WANDB_CACHE_DIR",
+     "value": "{RUN_DIR}/wandb-cache"
+    },
+    {
+     "name": "WANDB_DATA_DIR",
+     "value": "{RUN_DIR}/wandb-staging"
+    },
+    {
+     "name": "XDG_CACHE_HOME",
+     "value": "/tmp/prime-rl-cache"
+    },
+    {
+     "name": "LOCAL_SEARCH_SERVICE_NAME",
+     "value": "{SEARCH_SERVICE_NAME}"
+    },
+    {
+     "name": "LOCAL_SEARCH_SUPPORT_DIR",
+     "value": "/weka/stevenc/tmax/lucene_files"
+    }
+   ]
+  },
+  {
+   "name": "terminal",
+   "image": {
+    "beaker": "01M27G8Y678BBF5MWXX6R12BSB"
+   },
+   "command": [
+    "bash",
+    "{PRIME_RL_SOURCE}/beaker/runtime/entrypoint.sh",
+    "launcher",
+    "python",
+    "-m",
+    "prime_rl_beaker.coupled",
+    "worker",
+    "--state-dir",
+    "{STATE_DIR}",
+    "--",
+    "bash",
+    "-lc",
+    "for LR_VENV in \"${VIRTUAL_ENV:-}\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \"$LR_VENV\" && -x \"$LR_VENV/bin/python3\" ]]; then export VIRTUAL_ENV=\"$LR_VENV\" PATH=\"$LR_VENV/bin:$PATH\"; break; fi; done; unset LR_VENV; set -euo pipefail; REGISTRY=head+file://{RUN_DIR}/runtime/endpoint-files; export REGISTRY; LR_GLOBAL_RANK=$((0 + ${BEAKER_REPLICA_RANK:-0})); LR_PREFERRED_PORT=$((56096 + LR_GLOBAL_RANK)); export LR_GLOBAL_RANK LR_PREFERRED_PORT; exec python3 -m literegistry.coop.ports run  --assignment \"PORT=${LR_PREFERRED_PORT}\" --identity \"{IDENTITY}:terminal:${LR_GLOBAL_RANK}\" --host-id \"${BEAKER_NODE_HOSTNAME:-unknown-node}\" --command-json='[\"bash\",\"-lc\",\"for LR_VENV in \\\"${VIRTUAL_ENV:-}\\\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \\\"$LR_VENV\\\" && -x \\\"$LR_VENV/bin/python3\\\" ]]; then export VIRTUAL_ENV=\\\"$LR_VENV\\\" PATH=\\\"$LR_VENV/bin:$PATH\\\"; break; fi; done; unset LR_VENV; exec literegistry terminal --host=0.0.0.0 --port=\\\"$PORT\\\" --registry=\\\"$REGISTRY\\\"\"]' --lock_dir=/tmp/literegistry-port-locks --startup_timeout=120"
+   ],
+   "hostNetworking": true,
+   "propagateFailure": false,
+   "propagatePreemption": false,
+   "datasets": [
+    {
+     "mountPath": "/weka",
+     "source": {
+      "weka": "oe-adapt-default"
+     }
+    }
+   ],
+   "result": {
+    "path": "/tmp/result"
+   },
+   "context": {
+    "priority": "urgent",
+    "minRuntime": "0h",
+    "autoResume": true
+   },
+   "constraints": {
+    "cluster": [
+     "ai2/jupiter"
+    ]
+   },
+   "envVars": [
+    {
+     "name": "PRIME_RL_BOOTSTRAP_REPORT_DIR",
+     "value": "{RUN_DIR}/startup"
+    },
+    {
+     "name": "PRIME_RL_SOURCE_ID",
+     "value": "a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37"
+    },
+    {
+     "name": "WANDB_CACHE_DIR",
+     "value": "{RUN_DIR}/wandb-cache"
+    },
+    {
+     "name": "WANDB_DATA_DIR",
+     "value": "{RUN_DIR}/wandb-staging"
+    },
+    {
+     "name": "XDG_CACHE_HOME",
+     "value": "/tmp/prime-rl-cache"
+    },
+    {
+     "name": "LOCAL_SEARCH_SERVICE_NAME",
+     "value": "{SEARCH_SERVICE_NAME}"
+    },
+    {
+     "name": "LOCAL_SEARCH_SUPPORT_DIR",
+     "value": "/weka/stevenc/tmax/lucene_files"
+    }
+   ]
+  },
+  {
+   "name": "localsearch",
+   "image": {
+    "beaker": "01M3P5BFB2W9FHSY7V616ZCAP5"
+   },
+   "command": [
+    "bash",
+    "{PRIME_RL_SOURCE}/beaker/runtime/entrypoint.sh",
+    "retrieval",
+    "python",
+    "-m",
+    "prime_rl_beaker.coupled",
+    "worker",
+    "--state-dir",
+    "{STATE_DIR}",
+    "--",
+    "bash",
+    "-lc",
+    "for LR_VENV in \"${VIRTUAL_ENV:-}\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \"$LR_VENV\" && -x \"$LR_VENV/bin/python3\" ]]; then export VIRTUAL_ENV=\"$LR_VENV\" PATH=\"$LR_VENV/bin:$PATH\"; break; fi; done; unset LR_VENV; set -euo pipefail; REGISTRY=head+file://{RUN_DIR}/runtime/endpoint-files; export REGISTRY; LR_GLOBAL_RANK=$((0 + ${BEAKER_REPLICA_RANK:-0})); LR_PREFERRED_PORT=$((56352 + LR_GLOBAL_RANK)); export LR_GLOBAL_RANK LR_PREFERRED_PORT; exec python3 -m literegistry.coop.ports run  --assignment \"PORT=${LR_PREFERRED_PORT}\" --identity \"{IDENTITY}:localsearch:${LR_GLOBAL_RANK}\" --host-id \"${BEAKER_NODE_HOSTNAME:-unknown-node}\" --command-json='[\"bash\",\"-lc\",\"for LR_VENV in \\\"${VIRTUAL_ENV:-}\\\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \\\"$LR_VENV\\\" && -x \\\"$LR_VENV/bin/python3\\\" ]]; then export VIRTUAL_ENV=\\\"$LR_VENV\\\" PATH=\\\"$LR_VENV/bin:$PATH\\\"; break; fi; done; unset LR_VENV; LOCAL_SEARCH_CORPUS_JSONL={SEARCH_CORPUS}; LUCENE_INDEX_DIR={SEARCH_INDEX}; LITEREGISTRY_SERVICE_NAME={SEARCH_SERVICE_NAME}; export LOCAL_SEARCH_CORPUS_JSONL LUCENE_INDEX_DIR LITEREGISTRY_SERVICE_NAME; LITEREGISTRY_REGISTRY=\\\"$REGISTRY\\\"; LITEREGISTRY_PORT=\\\"$PORT\\\"; LITEREGISTRY_ADVERTISED_HOST=\\\"${BEAKER_NODE_HOSTNAME:-$(hostname -f)}\\\"; export LITEREGISTRY_REGISTRY LITEREGISTRY_PORT LITEREGISTRY_ADVERTISED_HOST; exec python -m uvicorn prime_rl_retrieval.server:create_app --factory --host 0.0.0.0 --port \\\"$PORT\\\"\"]' --lock_dir=/tmp/literegistry-port-locks --startup_timeout=1800"
+   ],
+   "hostNetworking": true,
+   "propagateFailure": false,
+   "propagatePreemption": false,
+   "datasets": [
+    {
+     "mountPath": "/weka",
+     "source": {
+      "weka": "oe-adapt-default"
+     }
+    },
+    {
+     "mountPath": "/nvme",
+     "source": {
+      "hostPath": "/data"
+     }
+    }
+   ],
+   "result": {
+    "path": "/tmp/result"
+   },
+   "context": {
+    "priority": "urgent",
+    "minRuntime": "0h",
+    "autoResume": true
+   },
+   "constraints": {
+    "cluster": [
+     "ai2/jupiter"
+    ]
+   },
+   "envVars": [
+    {
+     "name": "JAVA_HOME",
+     "value": "/weka/stevenc/tmax/lucene_files/jdk-21"
+    },
+    {
+     "name": "SEARCH_WORKERS",
+     "value": "4"
+    },
+    {
+     "name": "SEARCH_MAX_PENDING",
+     "value": "64"
+    },
+    {
+     "name": "RETRIEVAL_JAR",
+     "value": "/weka/stevenc/s2orc/dolma/s2orcforolmo/index_fs_v1/.venv/lib/python3.12/site-packages/pyserini/resources/jars/anserini-1.4.0-fatjar.jar"
+    },
+    {
+     "name": "RETRIEVAL_NVME_CACHE_DIR",
+     "value": "{NVME_CACHE_DIR}"
+    },
+    {
+     "name": "RETRIEVAL_NVME_MIN_FREE_GB",
+     "value": "10.0"
+    },
+    {
+     "name": "PRIME_RL_BOOTSTRAP_REPORT_DIR",
+     "value": "{RUN_DIR}/startup"
+    },
+    {
+     "name": "PRIME_RL_SOURCE_ID",
+     "value": "a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37"
+    },
+    {
+     "name": "WANDB_CACHE_DIR",
+     "value": "{RUN_DIR}/wandb-cache"
+    },
+    {
+     "name": "WANDB_DATA_DIR",
+     "value": "{RUN_DIR}/wandb-staging"
+    },
+    {
+     "name": "XDG_CACHE_HOME",
+     "value": "/tmp/prime-rl-cache"
+    },
+    {
+     "name": "LOCAL_SEARCH_SERVICE_NAME",
+     "value": "{SEARCH_SERVICE_NAME}"
+    },
+    {
+     "name": "LOCAL_SEARCH_SUPPORT_DIR",
+     "value": "/weka/stevenc/tmax/lucene_files"
+    }
+   ]
+  },
+  {
+   "name": "judge",
+   "image": {
+    "beaker": "01M27GBAWA3DW809VPPVENTAJ8"
+   },
+   "command": [
+    "bash",
+    "{PRIME_RL_SOURCE}/beaker/runtime/entrypoint.sh",
+    "launcher",
+    "python",
+    "-m",
+    "prime_rl_beaker.coupled",
+    "worker",
+    "--state-dir",
+    "{STATE_DIR}",
+    "--",
+    "bash",
+    "-lc",
+    "for LR_VENV in \"${VIRTUAL_ENV:-}\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \"$LR_VENV\" && -x \"$LR_VENV/bin/python3\" ]]; then export VIRTUAL_ENV=\"$LR_VENV\" PATH=\"$LR_VENV/bin:$PATH\"; break; fi; done; unset LR_VENV; set -euo pipefail; REGISTRY=head+file://{RUN_DIR}/runtime/endpoint-files; export REGISTRY; LR_GLOBAL_RANK=$((0 + ${BEAKER_REPLICA_RANK:-0})); LR_PREFERRED_PORT=$((56480 + LR_GLOBAL_RANK)); export LR_GLOBAL_RANK LR_PREFERRED_PORT; exec python3 -m literegistry.coop.ports run  --assignment \"PORT=${LR_PREFERRED_PORT}\" --identity \"{IDENTITY}:vllm-generate:${LR_GLOBAL_RANK}\" --host-id \"${BEAKER_NODE_HOSTNAME:-unknown-node}\" --command-json='[\"bash\",\"-lc\",\"for LR_VENV in \\\"${VIRTUAL_ENV:-}\\\" /opt/literegistry-services-venv /opt/literegistry-terminal-venv /opt/literegistry-redis-venv; do if [[ -n \\\"$LR_VENV\\\" && -x \\\"$LR_VENV/bin/python3\\\" ]]; then export VIRTUAL_ENV=\\\"$LR_VENV\\\" PATH=\\\"$LR_VENV/bin:$PATH\\\"; break; fi; done; unset LR_VENV; exec python -m prime_rl_beaker.judge_runtime --runtime=local --model=Qwen/Qwen3.8-27B --registry=\\\"$REGISTRY\\\" --host=0.0.0.0 --port=\\\"$PORT\\\" --tensor-parallel-size=1 --max-model-len=65536 --max-num-batched-tokens=32768 --max-num-seqs=256 --enable-prefix-caching --trust-remote-code --safetensors-load-strategy=prefetch --runner=generate --mamba-cache-mode=align --reasoning-parser=qwen3 --enable-auto-tool-choice --tool-call-parser=qwen3_coder --language-model-only\"]' --lock_dir=/tmp/literegistry-port-locks --startup_timeout=120"
+   ],
+   "hostNetworking": true,
+   "propagateFailure": true,
+   "propagatePreemption": true,
+   "datasets": [
+    {
+     "mountPath": "/weka",
+     "source": {
+      "weka": "oe-adapt-default"
+     }
+    }
+   ],
+   "result": {
+    "path": "/tmp/result"
+   },
+   "context": {
+    "priority": "urgent",
+    "minRuntime": "8h",
+    "autoResume": true
+   },
+   "constraints": {
+    "cluster": [
+     "ai2/holmes"
+    ]
+   },
+   "resources": {
+    "gpuCount": 1
+   },
+   "envVars": [
+    {
+     "name": "HF_TOKEN",
+     "secret": "{HF_TOKEN_SECRET}"
+    },
+    {
+     "name": "HF_HOME",
+     "value": "/weka/allennlp/.cache"
+    },
+    {
+     "name": "PRIME_RL_BOOTSTRAP_REPORT_DIR",
+     "value": "{RUN_DIR}/startup"
+    },
+    {
+     "name": "PRIME_RL_SOURCE_ID",
+     "value": "a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37"
+    },
+    {
+     "name": "WANDB_CACHE_DIR",
+     "value": "{RUN_DIR}/wandb-cache"
+    },
+    {
+     "name": "WANDB_DATA_DIR",
+     "value": "{RUN_DIR}/wandb-staging"
+    },
+    {
+     "name": "XDG_CACHE_HOME",
+     "value": "/tmp/prime-rl-cache"
+    },
+    {
+     "name": "LOCAL_SEARCH_SERVICE_NAME",
+     "value": "{SEARCH_SERVICE_NAME}"
+    },
+    {
+     "name": "LOCAL_SEARCH_SUPPORT_DIR",
+     "value": "/weka/stevenc/tmax/lucene_files"
+    }
+   ]
+  }
+ ]
+}

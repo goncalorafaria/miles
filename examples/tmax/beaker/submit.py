@@ -25,6 +25,12 @@ shared_memory, image (a Docker image, or ``beaker:<account>/<name>``), sandbox_s
 /weka/<bucket>), dockerhub_username, secrets (env var -> Beaker secret), env (extra env vars); with the config's
 ``sandbox_backend: gateway``: gateway_registry (the podman fleet's head registry, for a gateway started on the head)
 or gateway_url (a running gateway), gateway_min_replicas, literegistry_version, literegistry_podman_client_version.
+
+A config of another launcher names it with ``launcher`` (default examples/tmax/run_tmax_qwen3_5.py). A search config
+(examples/tmax_search) has a ``search_services`` section: the experiment then also runs Prime-RL's search services
+(examples/tmax_search/beaker/services.py), and the Miles task waits for them and stops them when training succeeds.
+Its keys: replicas (terminal / localsearch counts, default the Prime-RL run.yaml's), run_root (where each run's
+service state lives, on oe-adapt-default), hf_token_secret, nvme_cache_dir.
 """
 
 import argparse
@@ -72,12 +78,17 @@ def main() -> None:
     config = yaml.safe_load(config_path.read_text())
     beaker = config.get("beaker") or {}
     commit = _git("rev-parse", "HEAD")
-    if _git("status", "--porcelain", "--", "examples/tmax") and not args.allow_dirty:
-        raise SystemExit("examples/tmax has uncommitted changes; the job runs the committed config. Commit first.")
+    if _git("status", "--porcelain", "--", "examples/tmax", "examples/tmax_search") and not args.allow_dirty:
+        raise SystemExit(
+            "examples/tmax(_search) has uncommitted changes; the job runs the committed code. Commit first."
+        )
     exp_name = args.exp_name or (
         f"{config['exp_name']}_{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}" if config.get("exp_name") else ""
     )
     name = args.name or exp_name or f"{config_path.stem}-{time.strftime('%Y%m%d-%H%M%S')}"
+    services = (
+        _search_services(config, exp_name, create_dirs=not args.dry_run) if "search_services" in beaker else None
+    )
     spec = _build_spec(
         beaker=beaker,
         config_rel=str(config_path.relative_to(_REPO)),
@@ -88,6 +99,7 @@ def main() -> None:
         description=_description(
             config=config, config_stem=config_path.stem, exp_name=exp_name, commit=commit, overrides=args.overrides
         ),
+        services=services,
     )
     text = yaml.safe_dump(spec, sort_keys=False)
     if args.dry_run:
@@ -133,6 +145,7 @@ def _build_spec(
     exclude_hosts: list[str],
     exp_name: str,
     description: str,
+    services: dict | None = None,
 ) -> dict:
     user = getpass.getuser().lower()
     secrets = beaker.get("secrets") or {
@@ -156,6 +169,8 @@ def _build_spec(
         "LITEREGISTRY_VERSION": str(beaker.get("literegistry_version", "")),
         "LITEREGISTRY_PODMAN_CLIENT_VERSION": str(beaker.get("literegistry_podman_client_version", "")),
         "EXTRA_ARGS": shlex.join(overrides),
+        "LAUNCHER": beaker.get("launcher", ""),
+        **((services or {}).get("env") or {}),
         # The launcher's exported settings win over the config file's, and the entrypoint's pruner reads it too.
         "MILES_SCRIPT_EXP_NAME": exp_name,
         # mason's multi-node defaults on the weka clusters: NCCL over the InfiniBand NICs, not the bonded Ethernet.
@@ -191,7 +206,8 @@ def _build_spec(
             "synchronizedStartTimeout": beaker.get("synchronized_start_timeout", "1h"),
         }
         if nodes > 1
-        else {}
+        # With the search services in the experiment, a failed or preempted Miles task stops them too.
+        else ({"propagateFailure": True, "propagatePreemption": True} if services else {})
     )
     return {
         "version": "v2",
@@ -215,10 +231,66 @@ def _build_spec(
                 },
                 "context": context,
                 "constraints": _constraints(beaker.get("cluster", "ai2/holmes"), exclude_hosts),
-            }
+            },
+            *((services or {}).get("tasks") or []),
         ],
         "retry": {"allowedTaskRetries": int(beaker.get("retries", 0))},
     }
+
+
+def _search_services(config: dict, exp_name: str, *, create_dirs: bool) -> dict:
+    """Prime-RL's search service tasks for this run, and the Miles task's env to reach and stop them.
+
+    The service tasks mount oe-adapt-default at /weka, as Prime-RL's do; the Miles task mounts it at
+    /weka/oe-adapt-default, so each shared path is given in both views.
+    """
+    sys.path.insert(0, str(_REPO / "examples/tmax_search/beaker"))
+    from services import service_tasks  # noqa: E402
+
+    beaker, section = config["beaker"], config["beaker"]["search_services"] or {}
+    user = getpass.getuser().lower()
+    assert exp_name, "a search experiment needs exp_name: its services' state lives in a directory of that name"
+    mount = "/weka/oe-adapt-default"
+
+    def service_view(path: str) -> str:
+        assert path.startswith(mount + "/"), f"{path}: the service tasks see only {mount}"
+        return "/weka/" + path[len(mount) + 1 :]
+
+    source = config["prime_rl_source"]
+    run_yaml = f"{source}/{config['prime_rl_config'].rsplit('/', 1)[0]}/run.yaml"
+    run_dir = f"{section.get('run_root', f'{mount}/{user}/miles_search/runs')}/{exp_name}"
+    # One lifecycle directory per submission: the services exit once its `complete` exists, which an earlier
+    # submission of the same run may have left in its own.
+    state_dir = f"{run_dir}/runtime/lifecycle/{time.strftime('%Y%m%d_%H%M%S', time.gmtime())}"
+    if create_dirs:
+        for path in (
+            f"{run_dir}/runtime/endpoint-files",
+            f"{run_dir}/runtime/services",
+            state_dir,
+            f"{run_dir}/startup",
+        ):
+            os.makedirs(path, exist_ok=True)
+            os.chmod(path, 0o1777)  # the service tasks' users write here
+    service = yaml.safe_load(Path(run_yaml).read_text())["service"]
+    tasks = service_tasks(
+        prime_rl_source=service_view(source),
+        prime_rl_run_yaml=run_yaml,
+        run_dir=service_view(run_dir),
+        state_dir=service_view(state_dir),
+        identity=f"{user}-{exp_name}".replace("_", "-").lower(),
+        hf_token_secret=section.get("hf_token_secret", f"{user}_HF_TOKEN"),
+        context={"priority": beaker.get("priority", "normal"), "min_runtime": beaker.get("min_runtime") or "0h"},
+        replicas=section.get("replicas") or {},
+        nvme_cache_dir=section.get("nvme_cache_dir", f"/nvme/{user}/prime-rl/retrieval"),
+    )
+    env = {
+        "SANDBOX_BACKEND": "none",
+        "SEARCH_ENDPOINT_DIR": f"{run_dir}/runtime/endpoint-files",
+        "SEARCH_LIFECYCLE_DIR": state_dir,
+        "SEARCH_SERVICE_NAME": service["local_search_service_name"],
+        "SEARCH_JUDGE_MODEL": service["generation_model"],
+    }
+    return {"tasks": tasks, "env": env}
 
 
 def image_spec(name: str) -> dict:
