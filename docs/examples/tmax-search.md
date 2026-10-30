@@ -96,8 +96,9 @@ Local, against the pinned source's services and Prime-RL's own trajectories of i
 
 ## Known differences
 
-- **Tool schema tokens.** Miles renders the tools through SGLang's `Tool` model, which reorders keys; the first prompt
-  differs from Prime-RL's by a few tokens, as in the TMax port.
+- **Tool schema tokens.** Miles renders the tools through SGLang's `Tool` model, as SGLang's own chat serving does: each
+  tool's `description` comes before its `name`, and `"defer_loading": null` is added. On a Prime-RL step-1 trajectory
+  the first prompt is 1,124 tokens against Prime-RL's 1,112, and those two tool lines are the only difference.
 - **Judge failures.** A judge that never parses drops its whole group (Miles' missing-reward filter); Prime-RL drops
   only that rollout and keeps a group with two valid ones.
 - **Length-truncated turns** end the episode, unjudged: the session server cannot extend a turn without `<|im_end|>`.
