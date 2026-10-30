@@ -94,6 +94,18 @@ Local, against the pinned source's services and Prime-RL's own trajectories of i
 | Port's reward on 120 Prime-RL trajectories (step 1), the judge Qwen3.8-27B in fp8 | Same format verdicts in 120 of 120, same judge verdicts in 112 of 112, same reward in 120 of 120 |
 | 16 live episodes of Qwen/Qwen3.5-4B (8 questions x 2) through the port's loop | All end with a final answer, 42 turns on average (Prime-RL step 1: 41); mean reward 0.55, 62% correct |
 
+On Holmes, the two smoke configs (3 steps of 2 questions x 8 rollouts, B300s); every task of both exited 0 once the
+Miles task marked the run complete:
+
+| Smoke | Steps (grad norm) | Train/rollout log-prob gap | Episodes judged (correct) |
+|---|---|---|---|
+| `smoke_search_4b` (bf16 logits), `01M662W57MFXW38HEYWDQJYAHN` | 0.27, 0.37, 0.35 | 0.011–0.013 | 92 of 93 (45) |
+| `smoke_search_4b_fp32_head`, `01M667F63PRPE8ZXA9YB9J1HX9` | 0.23, 0.52, 0.39 | 0.0078, 0.0081, 0.0080 | 83 of 84 (35) |
+
+The fp32 head lowers the gap by about 30%; the training GPUs peaked at about 100 of 268 GB. Materializing the fp32
+logits instead (the first version of `--fp32-lm-head`) needed 110 GB more on the second step's log-prob pass and ran
+out of memory.
+
 ## Known differences
 
 - **Tool schema tokens.** Miles renders the tools through SGLang's `Tool` model, as SGLang's own chat serving does: each
