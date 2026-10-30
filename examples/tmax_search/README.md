@@ -44,7 +44,7 @@ trainer's settings are the launcher's defaults:
 | `batch_size 256, group_size 32` | `rollout_batch_size 8, n_samples_per_prompt 32`; GRPO mean baseline, no std normalization |
 | `[trainer.optim] adamw lr 5e-7, betas 0.95/0.95, eps 1e-12, max_norm 1, constant` | `--lr 5e-7 --adam-beta1 0.95 --adam-beta2 0.95 --adam-eps 1e-12 --clip-grad 1.0`, constant |
 | `optimization_dtype / reduce_dtype float32` | Megatron's fp32 master weights and Adam state; `--accumulate-allreduce-grads-in-fp32` |
-| `fused_lm_head_fp32_logits` and inference `enable_fp32_lm_head` | `fp32_lm_head` (`--fp32-lm-head --sglang-enable-fp32-lm-head`): the same fp32 GEMM of the bf16 operands, the trainer's materializing the fp32 logits (about +65 GB per GPU at 131k tokens) where Prime-RL chunks them |
+| `fused_lm_head_fp32_logits` and inference `enable_fp32_lm_head` | `fp32_lm_head` (`--fp32-lm-head --sglang-enable-fp32-lm-head`): the same fp32 GEMM of the bf16 operands; the trainer computes the response rows' logits 2048 at a time, as Prime-RL does |
 | `max_off_policy_steps 4, max_inflight_episodes 512`, in-flight weight updates | `--fully-async --max-weight-staleness 4 --async-max-concurrent-samples 512 --pause-generation-mode in_place` |
 | `seq_len 131072, max_completion_tokens 32768` | `--max-seq-len 131072 --rollout-max-response-len 32768` |
 | 16 learner + 16 rollout GPUs + 1 judge GPU | `async_rollout_gpus 16` on 4 nodes, the judge a 1-GPU task of the experiment |

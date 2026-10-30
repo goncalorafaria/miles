@@ -1,7 +1,7 @@
 # smoke_search_4b.yaml with fp32 logits on both sides (fp32_lm_head: --fp32-lm-head --sglang-enable-fp32-lm-head),
 # Prime-RL's fused_lm_head_fp32_logits and inference enable_fp32_lm_head. Same layout and per-GPU load: 2 training GPUs
-# at up to 131,072 tokens each, where the fp32 logits and their gradient add about 65 GB per GPU. Checks that it fits
-# and that train/train_rollout_logprob_abs_diff drops below the bf16 smoke's.
+# at up to 131,072 tokens each; the trainer's fp32 logits are computed in chunks of 2048 rows. Checks that it fits and
+# that train/train_rollout_logprob_abs_diff drops below the bf16 smoke's.
 exp_name: search_smoke_4b_fp32_head
 model_name: Qwen3.5-4B
 prime_rl_source: /weka/oe-adapt-default/shashankg/miles_search/prime-rl-sources/a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37/source
