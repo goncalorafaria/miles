@@ -628,10 +628,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help=(
                     "Compute the actor's logits as fp32 from the bf16 hidden states and the bf16 LM-head weight "
                     "(a bf16 x bf16 -> fp32 GEMM), as SGLang's --enable-fp32-lm-head does, instead of rounding "
-                    "them to bf16. The weight, its gradients and the weight sync stay bf16. Megatron backend only; "
-                    "needs --sglang-enable-fp32-lm-head, since fp32 logits on one side alone do not narrow the "
-                    "train/rollout log-prob gap. The [tokens, vocab / TP] logits and their gradient are held in "
-                    "fp32, twice the bf16 head's memory, with either --log-probs-backend."
+                    "them to bf16. The output layer hands the loss its hidden states, which computes the response "
+                    "rows' logits a chunk at a time and recomputes them in backward, so the [tokens, vocab] logits "
+                    "are never held at once; --log-probs-backend does not apply. The weight, its gradients and the "
+                    "weight sync stay bf16. Megatron backend, TP 1, policy and SFT losses only; needs "
+                    "--sglang-enable-fp32-lm-head, since fp32 logits on one side alone do not narrow the "
+                    "train/rollout log-prob gap."
                 ),
             )
             parser.add_argument(
@@ -3385,6 +3387,15 @@ def validate_fp32_lm_head_args(args) -> None:
             "--fp32-lm-head does not support --true-on-policy-mode, which rounds the trainer's logits to bf16 "
             "to match a bf16 engine LM head bit for bit"
         )
+    if args.tensor_model_parallel_size != 1:
+        raise ValueError(
+            "--fp32-lm-head computes the LM head over the whole vocabulary on each rank: it needs "
+            f"--tensor-model-parallel-size 1, got {args.tensor_model_parallel_size}"
+        )
+    if args.loss_type not in ("policy_loss", "sft_loss"):
+        raise ValueError(f"--fp32-lm-head supports the policy and SFT losses, not --loss-type {args.loss_type}")
+    if args.use_sampling_support_replay:
+        raise ValueError("--fp32-lm-head does not support sampling-support replay, which reads the full logits")
 
 
 def validate_log_probs_backend_args(args) -> None:

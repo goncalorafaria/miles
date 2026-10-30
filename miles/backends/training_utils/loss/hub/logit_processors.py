@@ -9,6 +9,10 @@ from miles.backends.training_utils.data.context_parallel import (
     iter_local_response_rows,
 )
 from miles.backends.training_utils.data.sampling_mask import build_local_sampling_mask
+from miles.backends.training_utils.loss.hub.fp32_lm_head_log_probs import (
+    fp32_lm_head_log_probs_and_entropy,
+    lm_head_weight,
+)
 from miles.backends.training_utils.loss.hub.math_utils import calculate_log_probs_and_entropy
 from miles.backends.training_utils.loss.hub.score_centering import selected_log_probs_and_entropy
 from miles.backends.training_utils.parallel import get_parallel_state
@@ -181,7 +185,20 @@ def get_log_probs_and_entropy(
                     f"sampling-mask length {len(sampling_mask)} != response length "
                     f"{response_length} for sample {sample_index}"
                 )
-    if args.log_probs_backend == "fused":
+    if getattr(args, "fp32_lm_head", False):
+        # `logits` are the final hidden states: the output layer leaves the LM head to this op (--fp32-lm-head)
+        assert rollout_sampling_mask is None, "--fp32-lm-head does not take a sampling mask"
+        res = _fp32_lm_head_log_probs_and_entropy(
+            logits,
+            args=args,
+            unconcat_tokens=unconcat_tokens,
+            total_lengths=total_lengths,
+            response_lengths=response_lengths,
+            with_entropy=with_entropy,
+            entropy_requires_grad=entropy_requires_grad,
+            max_seq_lens=max_seq_lens,
+        )
+    elif args.log_probs_backend == "fused":
         assert rollout_sampling_mask is None, "--log-probs-backend fused does not take a sampling mask"
         res = _fused_log_probs_and_entropy(
             logits,
@@ -295,6 +312,61 @@ def _torch_log_probs_and_entropy(
     return res
 
 
+def _response_rows(
+    flat_logits: torch.Tensor, layout: Iterator[LocalResponseRows]
+) -> tuple[torch.Tensor, torch.Tensor, list[int]]:
+    """Every sample's response rows of ``flat_logits`` and their target tokens, on its device, and each sample's count."""
+    row_ranges, targets, lengths = [], [], []
+    for sample_ranges, tokens_chunk, _ in layout:
+        row_ranges.extend(sample_ranges)
+        targets.append(tokens_chunk)
+        lengths.append(tokens_chunk.size(0))
+    device = flat_logits.device
+    # built on the CPU and copied once: one arange kernel per run would be hundreds of tiny launches;
+    # from pinned memory the copy queues behind the model forward instead of waiting for it to finish
+    rows = torch.cat([torch.arange(row_start, row_end) for row_start, row_end in row_ranges])
+    rows = rows.pin_memory().to(device, non_blocking=True)
+    return rows, torch.cat(targets).to(device), lengths
+
+
+def _fp32_lm_head_log_probs_and_entropy(
+    hidden: torch.Tensor,
+    *,
+    args: Namespace,
+    unconcat_tokens: list[torch.Tensor],
+    total_lengths: list[int],
+    response_lengths: list[int],
+    with_entropy: bool,
+    entropy_requires_grad: bool,
+    max_seq_lens: list[int] | None,
+) -> dict[str, list[torch.Tensor]]:
+    """All samples' response rows of the hidden states through the LM head in fp32, a chunk at a time."""
+    flat_hidden, layout = _local_response_layout(
+        hidden,
+        args=args,
+        unconcat_tokens=unconcat_tokens,
+        total_lengths=total_lengths,
+        response_lengths=response_lengths,
+        max_seq_lens=max_seq_lens,
+        include_response_indices=False,
+    )
+    rows, targets, lengths = _response_rows(flat_hidden, layout)
+    log_probs, entropy = fp32_lm_head_log_probs_and_entropy(
+        flat_hidden,
+        rows,
+        targets,
+        lm_head_weight(),
+        vocab_size=getattr(args, "vocab_size", None),
+        temperature=args.rollout_temperature,
+        with_entropy=with_entropy,
+        entropy_requires_grad=entropy_requires_grad,
+    )
+    res = {"log_probs": list(log_probs.split(lengths))}
+    if with_entropy:
+        res["entropy"] = list(entropy.split(lengths))
+    return res
+
+
 def _fused_log_probs_and_entropy(
     logits: torch.Tensor,
     *,
@@ -319,20 +391,11 @@ def _fused_log_probs_and_entropy(
         max_seq_lens=max_seq_lens,
         include_response_indices=False,
     )
-    row_ranges, targets, lengths = [], [], []
-    for sample_ranges, tokens_chunk, _ in layout:
-        row_ranges.extend(sample_ranges)
-        targets.append(tokens_chunk)
-        lengths.append(tokens_chunk.size(0))
-    device = flat_logits.device
-    # built on the CPU and copied once: one arange kernel per run would be hundreds of tiny launches;
-    # from pinned memory the copy queues behind the model forward instead of waiting for it to finish
-    rows = torch.cat([torch.arange(row_start, row_end) for row_start, row_end in row_ranges])
-    rows = rows.pin_memory().to(device, non_blocking=True)
+    rows, targets, lengths = _response_rows(flat_logits, layout)
     log_probs, entropy = fused_log_probs_and_entropy(
         flat_logits,
         rows,
-        torch.cat(targets).to(device),
+        targets,
         tp_group=get_parallel_state().tp.group,
         vocab_size=getattr(args, "vocab_size", None),  # a Megatron flag; other backends' logits are unpadded
         temperature=args.rollout_temperature,
