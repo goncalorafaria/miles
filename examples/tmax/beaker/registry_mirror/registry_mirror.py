@@ -24,12 +24,16 @@ import argparse
 import getpass
 import json
 import subprocess
+import sys
 import tempfile
 import time
 import urllib.request
 from pathlib import Path
 
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from submit import image_spec  # noqa: E402
 
 _NAME = "tmax-registry-mirror"
 _REPO = Path(__file__).resolve().parents[4]
@@ -58,7 +62,7 @@ def main() -> None:
     parser.add_argument("--dockerhub-username", default="shashankg209")
     parser.add_argument("--docker-pat-secret", default=f"{getpass.getuser().lower()}_DOCKER_PAT")
     parser.add_argument("--hf-token-secret", default=f"{getpass.getuser().lower()}_HF_TOKEN")
-    parser.add_argument("--image", default="docker.io/radixark/miles:dev-202610151741", help="for test / warm jobs")
+    parser.add_argument("--image", default="beaker:shashankg/tmax-miles-train-20261029", help="for test / warm jobs")
     parser.add_argument("--warm-workers", type=int, default=8)
     parser.add_argument("--warm-args", default="", help="extra warm_tmax_registry_mirror.py flags (--warm-args=...)")
     args = parser.parse_args()
@@ -181,7 +185,7 @@ def _job_spec(args: argparse.Namespace, script: str, cpus: int = 16) -> dict:
         "tasks": [
             {
                 "name": "main",
-                "image": {"docker": args.image},
+                "image": image_spec(args.image),
                 "command": ["bash", "-c", command],
                 "datasets": [{"mountPath": "/weka/nora-default", "source": {"weka": "nora-default"}}],
                 "envVars": [

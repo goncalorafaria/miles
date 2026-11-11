@@ -52,7 +52,7 @@ beaker:
   nodes: 2
   gpus: 8
   shared_memory: 512GiB
-  image: docker.io/radixark/miles:dev-202610151741
+  image: beaker:shashankg/tmax-miles-train-20261029
   dockerhub_username: shashankg209
   gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-private-reasoning-20261017.sqlite3
   gateway_min_replicas: 64

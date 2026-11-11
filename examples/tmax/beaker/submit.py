@@ -21,7 +21,7 @@ replica 0 the Ray head and joins the others to it.
 
 ``beaker:`` keys: cluster, workspace, budget, priority, preemptible, min_runtime, retries, nodes, gpus (per node),
 synchronized_start_timeout (multi-node: how long replicas wait for each other to start, default 1h),
-shared_memory, image, sandbox_shards, mirror_url (``auto``: the running registry_mirror.py mirrors), keep_last_n_checkpoints, weka (list of buckets, mounted at
+shared_memory, image (a Docker image, or ``beaker:<account>/<name>``), sandbox_shards, mirror_url (``auto``: the running registry_mirror.py mirrors), keep_last_n_checkpoints, weka (list of buckets, mounted at
 /weka/<bucket>), dockerhub_username, secrets (env var -> Beaker secret), env (extra env vars); with the config's
 ``sandbox_backend: gateway``: gateway_registry (the podman fleet's head registry, for a gateway started on the head)
 or gateway_url (a running gateway), gateway_min_replicas, literegistry_version, literegistry_podman_client_version.
@@ -201,7 +201,7 @@ def _build_spec(
             {
                 "name": "miles-tmax",
                 **replicas,
-                "image": {"docker": beaker.get("image", "docker.io/radixark/miles:latest")},
+                "image": image_spec(beaker.get("image", "docker.io/radixark/miles:latest")),
                 "command": ["bash", "-c", command],
                 "datasets": [
                     {"mountPath": f"/weka/{bucket}", "source": {"weka": bucket}}
@@ -219,6 +219,13 @@ def _build_spec(
         ],
         "retry": {"allowedTaskRetries": int(beaker.get("retries", 0))},
     }
+
+
+def image_spec(name: str) -> dict:
+    """``beaker:<account>/<name>`` is an image stored on Beaker (build_train_image.sh); anything else a Docker image."""
+    if name.startswith("beaker:"):
+        return {"beaker": name.removeprefix("beaker:")}
+    return {"docker": name}
 
 
 def _constraints(cluster: str, exclude_hosts: list[str]) -> dict:

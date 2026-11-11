@@ -44,7 +44,7 @@ beaker:
   retries: 0
   gpus: 4
   shared_memory: 256GiB
-  image: docker.io/radixark/miles:dev-202610151741
+  image: beaker:shashankg/tmax-miles-train-20261029
   dockerhub_username: shashankg209
   # The fleet literegistry's owners started for us (2026-10-21), as the OPD branch's smokes use.
   gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-private-reasoning-20261017.sqlite3

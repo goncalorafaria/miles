@@ -41,6 +41,7 @@ Validated end to end on B300s (Beaker `ai2/holmes`):
 | `tmax_prompts.py` | open-instruct's system prompt |
 | `configs/` | Experiment configs: open-instruct's production recipe on one node (`prod_1node.yaml`) and on its 4 nodes (`prod_4node.yaml`), and 4-GPU smoke tests (`smoke_2node.yaml` spans 2 nodes, `smoke_gateway.yaml` uses the podman fleet, `smoke_opd*.yaml` distill) |
 | `beaker/` | `submit.py` (config -> Beaker job, pinned to a commit), the job's entrypoint, open-instruct's vendored podman bring-up, and the registry mirror tooling |
+| `docker/` | `build_train_image.sh`: the training image, built from `docker/Dockerfile` at `HEAD` and uploaded to Beaker under its commit |
 | `tools/` | `watch_run.py` (one line per step, slow sync or failure of a running Beaker experiment) and `check_samples.py` (trained samples vs episode traces) |
 
 ## How an episode runs
@@ -163,18 +164,18 @@ Greedy evaluations (k=5, `max-model-len` 67584, tmax repo `c98902cc`; TBlite on 
 
 | Model | TBlite pass@1 / pass@5 | TB2.1 pass@1 / pass@5 |
 |---|---|---|
-| OPD, step 20 | 0.436 / 0.630 | 0.165 at 443/445, pass@5 pending |
+| OPD, step 20 | 0.436 / 0.630 | 0.164 / 0.258 |
 | OPD, step 40 | 0.452 / 0.640 | 0.202 / 0.315 |
 | OPD, step 60 | 0.478 / 0.690 | 0.187 / 0.326 |
-| OPD, step 100 | 0.438 / 0.680 | 0.199 at 443/445, pass@5 pending |
-| OPD, step 140 | 0.466 / 0.700 | 0.178 at 444/445, pass@5 pending |
-| OPD, step 195 | 0.480 / 0.700 | 0.180 at 444/445, pass@5 pending |
+| OPD, step 100 | 0.438 / 0.680 | 0.198 / 0.281 |
+| OPD, step 140 | 0.466 / 0.700 | 0.178 / 0.326 |
+| OPD, step 195 | 0.480 / 0.700 | 0.180 / 0.292 |
 | `allenai/tmax-4b` | 0.450 / 0.610 | 0.202 / 0.303 |
 | Base `hamishivi/Qwen3.5-4B` | 0.312 / 0.470 | 0.128 / 0.214 |
 
 The 4B student reaches `allenai/tmax-4b` on TBlite pass@1 by step 20-40 and passes it on pass@5 from step 60
-(0.69-0.70); pass@1 stays at 0.44-0.48 after that. On TB2.1 it stays at `allenai/tmax-4b`'s level or a little
-below. Training past step 60 bought pass@5 only, so the run was not resumed.
+(0.69-0.70); pass@1 stays at 0.44-0.48 after that. On TB2.1 it peaks at `allenai/tmax-4b`'s pass@1 at step 40
+(0.202) and stays a little below it after that (0.18-0.20), with pass@5 around `allenai/tmax-4b`'s (0.26-0.33 vs 0.30). Training past step 60 bought pass@5 only, so the run was not resumed.
 
 ### GRPO from the 9B OPD run's step 80, 4 nodes
 
