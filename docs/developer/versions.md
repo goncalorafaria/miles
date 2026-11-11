@@ -39,9 +39,8 @@ The default build-args are the version surface:
 |---|---|---|
 | `SGLANG_IMAGE_TAG` | `v0.5.21` | The `lmsysorg/sglang` base image, which brings torch, CUDA, Transformer Engine and Mooncake |
 | `SGLANG_BRANCH` | `sglang-miles` | The branch fetched into the base image's SGLang checkout |
-| `SGLANG_COMMIT` | empty | Empty means the branch HEAD at build time; set it to freeze one commit |
-| `MEGATRON_REPO` / `MEGATRON_BRANCH` / `MEGATRON_COMMIT` | `radixark/Megatron-LM` / `miles-main` / empty | The Megatron-LM checkout; an empty commit follows branch HEAD, while a release build supplies the locked commit |
-| `MILES_COMMIT` | `main` | The Miles checkout baked into the image |
+| `SGLANG_COMMIT` | `7b6993a310d0` | The SGLang commit, fetched by its hash; empty means the branch HEAD at build time |
+| `MEGATRON_REPO` / `MEGATRON_BRANCH` / `MEGATRON_COMMIT` | `radixark/Megatron-LM` / `miles-main` / `9df207fd129a` | The Megatron-LM checkout; an empty commit follows branch HEAD |
 | `WHEELS_REPO` | `radixark/miles-wheels` | The prebuilt-wheels repository |
 | `WHEELS_TAG_X86` / `WHEELS_TAG_ARM64` | `cu130-torch213-x86_64` / `cu130-torch213-aarch64` | Two complete wheels releases, selected by `TARGETARCH` and installed verbatim |
 

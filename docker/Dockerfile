@@ -15,13 +15,13 @@ FROM lmsysorg/sglang:${SGLANG_IMAGE_TAG} AS sglang
 
 # ======================================== Arguments =============================================
 
+# SGLang and Megatron-LM are pinned to exact commits; an empty commit means the branch HEAD at build time.
 ARG SGLANG_BRANCH=sglang-miles
-ARG SGLANG_COMMIT=""
+ARG SGLANG_COMMIT=7b6993a310d0dbb67929b51582d1729a6295e417
 
 ARG MEGATRON_REPO=radixark/Megatron-LM
 ARG MEGATRON_BRANCH=miles-main
-# Empty means the branch HEAD at build time; release builds set it to freeze one commit.
-ARG MEGATRON_COMMIT=""
+ARG MEGATRON_COMMIT=9df207fd129a64d49ee7f96d4ca8eb477fda1a5d
 ARG TORCHTITAN_REPO=pytorch/torchtitan
 ARG TORCHTITAN_COMMIT=086bf6c166ec85c1298eb5596fa9bf95f6a2d840
 
@@ -229,17 +229,14 @@ RUN rm -rf /root/.cache/pip /root/flash-attention
 
 # ====================================== Install sglang-miles ============================================
 
-# Install sglang from sglang-miles branch
+# Install sglang at SGLANG_COMMIT, fetched by its hash because sglang-miles is rewritten from
+# time to time, or else at the sglang-miles HEAD.
 # The base image ships the Rust extension modules prebuilt (SGLANG_RUST_BUILD_MODE=never);
 # re-installing must not rebuild them, which needs the torch link path only the upstream
 # build stage has.
 RUN cd /sgl-workspace/sglang && \
-    git fetch origin ${SGLANG_BRANCH} && \
-    if [ -n "${SGLANG_COMMIT}" ]; then \
-      git checkout -f ${SGLANG_COMMIT}; \
-    else \
-      git checkout -f FETCH_HEAD; \
-    fi && \
+    git fetch origin ${SGLANG_COMMIT:-${SGLANG_BRANCH}} && \
+    git checkout -f FETCH_HEAD && \
     SGLANG_BUILD_RUST_EXTS=none pip install -e "python[all]" --no-deps
 
 COPY docker/install-kube-tools.sh /tmp/install-kube-tools.sh
@@ -247,11 +244,9 @@ RUN bash /tmp/install-kube-tools.sh "${TARGETARCH}" && rm -f /tmp/install-kube-t
 
 # ====================================== Install main package ============================================
 
-ARG MILES_COMMIT=main
-RUN git clone https://github.com/radixark/miles.git /root/miles && \
-    cd /root/miles && \
-    git checkout ${MILES_COMMIT} && \
-    pip install -e . --no-deps
+# Miles from the build context, so the image holds the repository commit it is built from.
+COPY . /root/miles
+RUN cd /root/miles && pip install -e . --no-deps
 
 # int4 fake-quant extension (source: miles/kernels/quant/int4_fake)
 RUN pip install /tmp/wheels/fake_int4_quant_cuda-*.whl
@@ -305,6 +300,11 @@ assert 'map_dataclass_to_tuple' in p, \
   'apache-tvm-ffi resolves to a build too old for nvidia-cutlass-dsl 4.6.0: %s' % list(p)"
 
 RUN rm -rf /tmp/wheels
+
+# Python packages the steps above leave unpinned, held at the versions in docker/pip_pins.txt.
+# cwevals is a dependency only of newer wandb releases than the pinned one.
+COPY docker/pip_pins.txt /tmp/pip_pins.txt
+RUN pip install --no-deps -r /tmp/pip_pins.txt && pip uninstall -y cwevals && rm /tmp/pip_pins.txt
 
 # The cu130 sglang base ships its baked Rust toolchain outside the default PATH.
 ENV PATH="/root/.cargo/bin:${PATH}"
