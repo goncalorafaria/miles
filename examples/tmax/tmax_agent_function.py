@@ -61,7 +61,6 @@ from pathlib import Path
 from typing import Any
 
 from openai import AsyncOpenAI
-from tmax_gateway import TmaxGatewaySandbox, close_live_sandboxes
 from tmax_sandbox import (
     SandboxBase,
     SandboxInfraError,
@@ -196,14 +195,22 @@ async def abort(args) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(str(_abort_generation() + 1))
     tmp.replace(path)  # atomic, so a reader never sees a half-written counter
-    removed = await (close_live_sandboxes() if backend_name() == "gateway" else remove_owned_sandboxes())
+    if backend_name() == "gateway":
+        from tmax_gateway import close_live_sandboxes  # literegistry-podman-client is installed for this backend only
+
+        removed = await close_live_sandboxes()
+    else:
+        removed = await remove_owned_sandboxes()
     logger.info(f"TMax abort: signalled in-flight episodes, removed {removed} sandboxes")
 
 
 def _make_sandbox(image: str, task_dir: str) -> SandboxBase:
     """A container from the configured backend: podman daemons of this job, or a LiteRegistry podman fleet."""
-    backend = TmaxGatewaySandbox if backend_name() == "gateway" else TmaxSandbox
-    return backend(image=image, task_dir=task_dir)
+    if backend_name() == "gateway":
+        from tmax_gateway import TmaxGatewaySandbox  # literegistry-podman-client is installed for this backend only
+
+        return TmaxGatewaySandbox(image=image, task_dir=task_dir)
+    return TmaxSandbox(image=image, task_dir=task_dir)
 
 
 async def _run_episode(episode: _Episode, policy: AsyncOpenAI, box: TmaxSandbox, request_kwargs: dict) -> None:
