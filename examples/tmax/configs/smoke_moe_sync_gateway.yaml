@@ -1,0 +1,39 @@
+# smoke_moe_sync.yaml (Qwen3.5-35B-A3B, sync and colocated on 4 GPUs, EP 4, R3, 3 steps of 4 prompts x 4 samples on a
+# 64-prompt subset, 16k per episode) on current infrastructure: sandboxes on the podman-jupiter128-20261105 fleet, the
+# commit-named training image tmax-miles-train-d0831a475b (its predecessor dev-202610151741 was pruned), and the model,
+# dataset, checkpoints and traces on oe-adapt-default. min_runtime 2h: loading the 35B took about an hour from weka
+# on 2026-10-29, and that smoke was preempted at its 1 h mark.
+exp_name: tmax_smoke_moe_sync_gateway
+sandbox_backend: gateway                      # containers on the fleet behind beaker.gateway_registry
+num_gpus_per_node: 4
+num_prompts: 64
+rollout_batch_size: 4
+n_samples_per_prompt: 4
+num_rollout: 3
+max_seq_len: 16384
+tensor_model_parallel_size: 1
+expert_model_parallel_size: 4
+sglang_mem_fraction_static: 0.6
+filter_zero_std: false
+save_interval: 1000
+episode_timeout_s: 3600
+model_dir: /weka/oe-adapt-default/shashankg/miles_tmax/models
+data_dir: /weka/oe-adapt-default/shashankg/miles_tmax/datasets
+output_dir: /weka/oe-adapt-default/allennlp/deletable_checkpoint_states/shashankg/miles
+trace_dir: /weka/oe-adapt-default/allennlp/deletable_rollouts/miles
+dump_training_data: true
+
+beaker:
+  launcher: examples/tmax/run_tmax_qwen3_5_moe.py
+  cluster: ai2/holmes
+  workspace: ai2/oe-agents-holmes
+  budget: ai2/oe-omai
+  priority: urgent
+  min_runtime: 2h
+  retries: 0
+  gpus: 4
+  shared_memory: 256GiB
+  image: beaker:shashankg/tmax-miles-train-d0831a475b
+  dockerhub_username: shashankg209
+  gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
+  gateway_min_replicas: 8
