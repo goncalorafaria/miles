@@ -16,7 +16,7 @@ Validated end to end on B300s (Beaker `ai2/holmes`):
 | Pure on-policy distillation, fully async, 4 H100s (Jupiter) | `configs/smoke_opd_4b_async_jupiter_fused.yaml` | `allenai/tmax-4b` into `hamishivi/Qwen3.5-4B`, 3 steps, 2026-10-23 |
 | Pure on-policy distillation with the teacher on an SGLang server, same and cross size | `configs/smoke_opd_{4b,9b_to_4b}_sglang_jupiter.yaml` | `allenai/tmax-4b` and `allenai/tmax-9b` into `hamishivi/Qwen3.5-4B`, 3 steps each, 2026-10-23 |
 | Pure OPD across sizes on 4 nodes, the teacher on 2 SGLang servers on the rollout nodes | `configs/prod_4node_gateway_opd_9b_to_4b.yaml` | `allenai/tmax-9b` into `hamishivi/Qwen3.5-4B`, 194 steps, 2026-10-28 |
-| Synchronous GRPO for Qwen3.5 MoE, EP 4 and R3, 4 GPUs | `run_tmax_qwen3_5_moe.py`, `configs/smoke_moe_sync.yaml` | Qwen3.5-35B-A3B, 3 steps, 2026-10-20 |
+| Synchronous GRPO for Qwen3.5 MoE, EP 4 and R3, 4 GPUs | `run_tmax_qwen3_5_moe.py`, `configs/smoke_moe_sync.yaml`, `configs/smoke_moe_sync_gateway*.yaml` | Qwen3.5-35B-A3B, 3 steps, 2026-10-20 and (podman fleet) 2026-11-11 |
 | open-instruct's production recipe, fully async on 4 nodes (32x B300), 64k context | `configs/prod_4node.yaml` | Qwen3.5-9B, training on Beaker since 2026-10-16 |
 
 | Read | For |
@@ -355,6 +355,15 @@ Weight syncs took 14-17 s; steps took 2088 / 1133 / 472 s, mostly rollout (the f
 | 0 | 75% | 332 s | 0 | 0 | 5e-4 | 0.0094 |
 | 1 | 62% | 216 s | 0.039 | 0.22 | 4e-4 | 0.0076 |
 | 2 | 19% | 156 s | -0.011 | 0.063 | 4e-4 | 0.0078 |
+
+The same smoke with sandboxes on the podman-jupiter128-20261105 fleet, the image tmax-miles-train-d0831a475b and
+storage on oe-adapt-default (`smoke_moe_sync_gateway.yaml` and its priority-high twin `_high`, Beaker
+01M751K3M862SBS8Y8P2X66XTY and 01M7528F31RP9J3XSS9SMMQ9BE, 2026-11-11) trained 3 steps twice: weight syncs 10-16 s,
+train/rollout |Δ log-prob| 0.0063-0.0090, grad_norm 0.17-0.18 at step 1 (steps 0 and 2 were all-uniform groups).
+On one Jupiter node (8x H100 80GB, `smoke_moe_sync_gateway_jupiter.yaml`: two 4-GPU engines with SGLang EP 4,
+training EP 8) the rollout ran, but the first training step ran out of memory: the torch log-prob backend's fp32
+logits for ~8k tokens needed 8 GiB next to the trainer's 49 GB and the paused colocated engine's 27 GB. 80GB GPUs
+need `--log-probs-backend fused` (`smoke_moe_sync_gateway_jupiter_fused.yaml`).
 
 Fully-async GRPO, Qwen3.5-9B, 2 training + 2 rollout GPUs: 4 steps, grad_norm 0.40 / 0.28 / 0.23 / 0.22,
 train/rollout KL 3e-4 to 4e-4, at most 1 weight version stale, no stale or aborted groups.
