@@ -1,0 +1,35 @@
+# smoke_async.yaml (podman backend: sandboxes on podman daemons inside this job) on Jupiter's 4 H100s, to check that
+# podman-backend episodes run again after the gateway client import fix. The 4B model with Adam in host RAM and fused
+# log-probs, as smoke_4b_jupiter_imgd0831a475b.yaml ran on 80GB; the first podman-backend run on Jupiter.
+# 3 steps of 4 prompts x 4 samples on a 64-prompt subset, 16k per episode, zero-variance filter off.
+model_name: Qwen3.5-4B-tmax-template          # hamishivi/Qwen3.5-4B, its patched chat template
+async_rollout_gpus: 2
+num_gpus_per_node: 4
+num_prompts: 64
+rollout_batch_size: 4
+n_samples_per_prompt: 4
+num_rollout: 3
+max_seq_len: 16384
+tensor_model_parallel_size: 1
+optimizer_cpu_offload: true                   # Adam in host RAM: 80GB GPUs, not 288GB
+sglang_mem_fraction_static: 0.6
+filter_zero_std: false
+save_interval: 1000
+episode_timeout_s: 3600
+extra_args: "--log-probs-backend fused"         # prod's; streams the logits instead of an fp32 copy
+model_dir: /weka/nora-default/shashankg/miles_tmax_v2/models
+data_dir: /weka/nora-default/shashankg/miles_tmax_v2/datasets
+output_dir: /weka/nora-default/shashankg/miles_tmax_v2/output
+
+beaker:
+  cluster: ai2/jupiter
+  workspace: ai2/oe-agents
+  budget: ai2/oe-omai
+  priority: urgent
+  min_runtime: 1h                             # on ai2/oe-agents' Jupiter allocation
+  retries: 0
+  gpus: 4
+  shared_memory: 256GiB
+  image: beaker:shashankg/tmax-miles-train-d0831a475b
+  sandbox_shards: 1
+  dockerhub_username: shashankg209
