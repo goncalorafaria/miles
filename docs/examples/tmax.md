@@ -44,7 +44,7 @@ Validated end to end on B300s (Beaker `ai2/holmes`):
 | `tmax_prompts.py` | open-instruct's system prompt |
 | `configs/` | Experiment configs: open-instruct's production recipe on one node (`prod_1node.yaml`) and on its 4 nodes (`prod_4node.yaml`), and 4-GPU smoke tests (`smoke_2node.yaml` spans 2 nodes, `smoke_gateway.yaml` uses the podman fleet, `smoke_opd*.yaml` distill) |
 | `beaker/` | `submit.py` (config -> Beaker job, pinned to a commit), the job's entrypoint, open-instruct's vendored podman bring-up, and the registry mirror tooling |
-| `docker/` | `build_train_image.sh`: the training image, rebuilt from pinned upstream commits and uploaded to Beaker |
+| `docker/` | `build_train_image.sh`: the training image, built from `docker/Dockerfile` at `HEAD` and uploaded to Beaker under its commit |
 | `tools/` | `watch_run.py` (one line per step, slow sync or failure of a running Beaker experiment) and `check_samples.py` (trained samples vs episode traces) |
 
 ## How an episode runs

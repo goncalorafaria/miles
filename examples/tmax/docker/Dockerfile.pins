@@ -1,6 +1,0 @@
-# The TMax training image: upstream's build (BASE) with train_image_pins.txt's versions put back.
-ARG BASE
-FROM ${BASE}
-COPY train_image_pins.txt /tmp/train_image_pins.txt
-# cwevals is a dependency only of the newer wandb the upstream build resolved.
-RUN pip install --no-deps -r /tmp/train_image_pins.txt && pip uninstall -y cwevals && rm /tmp/train_image_pins.txt

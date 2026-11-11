@@ -121,16 +121,17 @@ Ethernet).
 
 ## Images
 
-- **The configs use our own image on Beaker**: `image: beaker:shashankg/tmax-miles-train-20261029`. Upstream's dated
-  dev images (`radixark/miles:dev-YYYYMMDDHHMM`) are deleted after 14 days, and `dev-202610151741`, which every run
-  before 2026-10-29 used, was gone that day. A Beaker image stays until someone deletes it.
-  [`../docker/build_train_image.sh`](https://github.com/radixark/miles/blob/main/examples/tmax/docker/build_train_image.sh) rebuilds that image from upstream's Dockerfile at
-  the Miles commit that built it, with its SGLang (`7b6993a`, 0.5.22.dev46), Megatron (`9df207fd1`), torch 2.13 on
-  CUDA 13.0, and the versions it had of the Python packages the Dockerfile leaves unpinned
-  ([`train_image_pins.txt`](https://github.com/radixark/miles/blob/main/examples/tmax/docker/train_image_pins.txt), from a run's W&B pip freeze); `--beaker NAME` uploads
-  it. `submit.py` takes `beaker:<account>/<name>` for a Beaker image and anything else as a Docker image.
-- **A new image is a new config.** Build it under a new name, smoke-test it, and point new configs at it; a release
-  tag (`radixark/miles:v0.1.x`) is the other base that persists.
+- **Images are ours, on Beaker, named by commit.** [`../docker/build_train_image.sh`](https://github.com/radixark/miles/blob/main/examples/tmax/docker/build_train_image.sh)
+  builds this repository's `docker/Dockerfile` at `HEAD`, with that commit's Miles copied in, and uploads it as
+  `<account>/tmax-miles-train-<commit>`. A config names it as `image: beaker:<account>/tmax-miles-train-<commit>`;
+  `submit.py` takes `beaker:<account>/<name>` for a Beaker image and anything else as a Docker image. The Dockerfile
+  pins SGLang (`7b6993a`, 0.5.22.dev46) and Megatron (`9df207fd1`), and `docker/pip_pins.txt` the Python packages it
+  otherwise leaves unpinned. Jobs run the commit they are submitted from, so a new image is needed only when the
+  environment changes.
+- **Upstream's images are not used.** Upstream deletes dated dev images (`radixark/miles:dev-YYYYMMDDHHMM`) after 14
+  days; `dev-202610151741`, which every run before 2026-10-29 used, was gone that day. The configs written before
+  the per-commit images use `shashankg/tmax-miles-train-20261029`, a rebuild of it with the same pins.
+- **A new image is a new config.** Smoke-test it with new configs that name it; a run's config keeps its image.
 - **Session server v2 needs SGLang's prefill weight versions** (`--enable-prefill-weight-versions`). Images from
   2026-10-14 on have them; with an older one (e.g. `dev-202610131159`) the job dies at start with an
   `AttributeError` on `enable_prefill_weight_versions`.

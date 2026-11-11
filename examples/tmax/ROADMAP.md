@@ -97,8 +97,8 @@ improves fidelity or visibility. **P2** is cleanup and rare cases.
 - **Upstream first.** Rebase onto upstream rather than patch Miles core (2026-10-15). The session-fetch retry
   written before that rebase was dropped; it survives on `backup/tmax-terminal-rl-pre-rebase-2` (`5237ac3fac`).
 - **Session server v2** with upstream's namespaced radix cache, not v1.
-- **Images.** Our own training image on Beaker (a rebuild of `dev-202610151741`, since upstream deletes dated dev
-  images after 14 days); the thin derived image with podman 5.6.2 later.
+- **Images.** Our own training images on Beaker, built from our `docker/Dockerfile` and named by commit (upstream
+  deletes dated dev images after 14 days); podman 5.6.2 in the image later.
 - **Mirrors** are neither rotated nor warmed.
 - **Context.** Production trains at 64k (`max_seq_len: 67584`); smoke tests use 16k.
 - **Runs.** Every submission is a new run with a UTC date-time suffix; `--exp-name` continues one.

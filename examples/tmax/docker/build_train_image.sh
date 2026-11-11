@@ -1,64 +1,61 @@
 #!/usr/bin/env bash
-# Builds the TMax training image and, with --beaker NAME, uploads it to Beaker, where it stays until deleted.
+# Builds the TMax training image from this repository's docker/Dockerfile at HEAD and uploads it to Beaker as
+# <account>/tmax-miles-train-<commit>, where it stays until deleted. A config picks its image by that name.
 #
-# Upstream publishes dated dev images (radixark/miles:dev-YYYYMMDDHHMM) and deletes them after 14 days; the image all
-# TMax runs used, dev-202610151741, was deleted on 2026-10-29. This rebuilds it: upstream's docker/Dockerfile at the
-# Miles commit that built it (docker-build run 38779343791), with the SGLang and Megatron commits that image had. A
-# W&B run's recorded pip freeze gave those (sglang 0.5.22.dev46+g7b6993a, megatron-core 0.19.0+9df207fd1).
-# sglang-miles was force-pushed since, so SGLang is fetched by commit, not by branch. The Dockerfile leaves most
-# Python packages unpinned; Dockerfile.pins puts back the versions that had moved (train_image_pins.txt).
+# The build context is `git archive HEAD`, so the image holds exactly that commit: its Dockerfile with the SGLang
+# and Megatron pins, docker/pip_pins.txt, and its Miles at /root/miles. Jobs still run the commit they are
+# submitted from (PYTHONPATH), so a new image is needed only when the environment changes.
 #
-#   bash examples/tmax/docker/build_train_image.sh                        # build tmax-miles-train:<date>
-#   bash examples/tmax/docker/build_train_image.sh --beaker tmax-miles-train-20261029
+#   bash examples/tmax/docker/build_train_image.sh              # build HEAD's image and upload it
+#   bash examples/tmax/docker/build_train_image.sh --no-upload  # build localhost/tmax-miles-train:<commit> only
+#
+# Refuses uncommitted changes to tracked files (the image would silently leave them out) and an image name that
+# already exists on Beaker. `beaker image create` talks to a Docker API: with podman, start
+# `podman system service --time=0 unix:///run/podman/podman.sock &` and set DOCKER_HOST=unix:///run/podman/podman.sock.
 set -euo pipefail
 
-MILES_COMMIT=af4413b74f33f072883b6fbc760cccba3d56160d     # upstream main at the 2026-10-15 17:41 build
-SGLANG_IMAGE_TAG=v0.5.21
-SGLANG_COMMIT=7b6993a310d0dbb67929b51582d1729a6295e417
-MEGATRON_COMMIT=9df207fd129a64d49ee7f96d4ca8eb477fda1a5d
-WHEELS_TAG_X86=cu130-torch213-x86_64
-
-tag=tmax-miles-train:$(date -u +%Y%m%d)
-beaker_name=""
 workspace=ai2/oe-agents-holmes
 budget=ai2/oe-omai
+upload=1
 while [ $# -gt 0 ]; do
     case "$1" in
-        --tag) tag=$2; shift 2 ;;
-        --beaker) beaker_name=$2; shift 2 ;;
+        --no-upload) upload=0; shift ;;
         --workspace) workspace=$2; shift 2 ;;
+        --budget) budget=$2; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
 
 repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
+if [ -n "$(git -C "$repo" status --porcelain --untracked-files=no)" ]; then
+    echo "uncommitted changes to tracked files; commit them first, the image is built from HEAD:" >&2
+    git -C "$repo" status --short --untracked-files=no >&2
+    exit 1
+fi
+commit=$(git -C "$repo" rev-parse HEAD)
+name=tmax-miles-train-${commit:0:10}
+tag=localhost/tmax-miles-train:${commit:0:10}
+
+if [ "$upload" = 1 ]; then
+    account=$(beaker account whoami --format json \
+        | python3 -c "import json, sys; d = json.load(sys.stdin); print((d[0] if isinstance(d, list) else d)['name'])")
+    if beaker image get "$account/$name" > /dev/null 2>&1; then
+        echo "Beaker image $account/$name already exists" >&2
+        exit 1
+    fi
+fi
+
 context=$(mktemp -d)
 trap 'rm -rf "$context"' EXIT
-git -C "$repo" fetch -q https://github.com/radixark/miles.git "$MILES_COMMIT" 2> /dev/null || true
-git -C "$repo" archive "$MILES_COMMIT" | tar -x -C "$context"
+git -C "$repo" archive HEAD | tar -x -C "$context"
 # The Dockerfile's `COPY wheel[s]/` matches nothing without a wheels/ directory: BuildKit skips it, podman fails.
 mkdir "$context/wheels"
 
-# SGLANG_BRANCH is what the Dockerfile fetches; GitHub serves a commit by its hash.
-docker build "$context" -f "$context/docker/Dockerfile" -t "$tag-upstream" \
-    --platform linux/amd64 \
-    --build-arg TARGETARCH=amd64 \
-    --build-arg SGLANG_IMAGE_TAG=$SGLANG_IMAGE_TAG \
-    --build-arg SGLANG_BRANCH=$SGLANG_COMMIT \
-    --build-arg SGLANG_COMMIT=$SGLANG_COMMIT \
-    --build-arg MEGATRON_COMMIT=$MEGATRON_COMMIT \
-    --build-arg WHEELS_TAG_X86=$WHEELS_TAG_X86 \
-    --build-arg MILES_COMMIT=$MILES_COMMIT \
-    --label tmax.miles_commit=$MILES_COMMIT \
-    --label tmax.sglang_image_tag=$SGLANG_IMAGE_TAG \
-    --label tmax.sglang_commit=$SGLANG_COMMIT \
-    --label tmax.megatron_commit=$MEGATRON_COMMIT \
-    --label tmax.wheels_tag=$WHEELS_TAG_X86
-here=$(cd "$(dirname "$0")" && pwd)
-docker build "$here" -f "$here/Dockerfile.pins" -t "$tag" --build-arg BASE="$tag-upstream"
+docker build "$context" -f "$context/docker/Dockerfile" -t "$tag" \
+    --platform linux/amd64 --build-arg TARGETARCH=amd64 --label tmax.commit="$commit"
 
-if [ -n "$beaker_name" ]; then
-    beaker image create --name "$beaker_name" --workspace "$workspace" --budget "$budget" \
-        --description "TMax training image: miles $MILES_COMMIT, sglang $SGLANG_COMMIT, megatron $MEGATRON_COMMIT" \
-        "$tag"
+if [ "$upload" = 1 ]; then
+    beaker image create --name "$name" --workspace "$workspace" --budget "$budget" \
+        --description "TMax training image: docker/Dockerfile and Miles at $commit" "$tag"
+    echo "config: image: beaker:$account/$name"
 fi
