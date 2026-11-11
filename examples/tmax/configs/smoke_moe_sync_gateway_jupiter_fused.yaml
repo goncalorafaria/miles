@@ -1,0 +1,42 @@
+# smoke_moe_sync_gateway_jupiter.yaml with the fused log-prob backend and the current dense smokes' timeouts. Its twin
+# ran out of memory at its first training step (Beaker 01M7526KGZR99S312XNS9P86CA, 2026-11-11): the torch backend's
+# fp32 logits for ~8k tokens (vocabulary 248k) needed 8 GiB next to the trainer's 49 GB and the paused colocated
+# SGLang engine's 27 GB on an 80GB H100. 'fused' streams the logits through Triton kernels instead.
+exp_name: tmax_smoke_moe_sync_gateway_jupiter_fused
+sandbox_backend: gateway                      # containers on the fleet behind beaker.gateway_registry
+num_gpus_per_node: 8
+num_prompts: 64
+rollout_batch_size: 4
+n_samples_per_prompt: 4
+num_rollout: 3
+max_seq_len: 16384
+tensor_model_parallel_size: 1
+expert_model_parallel_size: 8
+rollout_num_gpus_per_engine: 4
+sglang_ep_size: 4
+sglang_moe_runner_backend: auto               # SGLang's own choice on Hopper; flashinfer_cutlass is upstream's B300 setting
+sglang_mem_fraction_static: 0.6
+filter_zero_std: false
+save_interval: 1000
+episode_timeout_s: 3600
+extra_args: "--log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout 1800"
+model_dir: /weka/oe-adapt-default/shashankg/miles_tmax/models
+data_dir: /weka/oe-adapt-default/shashankg/miles_tmax/datasets
+output_dir: /weka/oe-adapt-default/allennlp/deletable_checkpoint_states/shashankg/miles
+trace_dir: /weka/oe-adapt-default/allennlp/deletable_rollouts/miles
+dump_training_data: true
+
+beaker:
+  launcher: examples/tmax/run_tmax_qwen3_5_moe.py
+  cluster: ai2/jupiter
+  workspace: ai2/oe-agents
+  budget: ai2/oe-omai
+  priority: urgent
+  min_runtime: 2h                             # on ai2/oe-agents' Jupiter allocation
+  retries: 0
+  gpus: 8
+  shared_memory: 256GiB
+  image: beaker:shashankg/tmax-miles-train-d0831a475b
+  dockerhub_username: shashankg209
+  gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
+  gateway_min_replicas: 8
