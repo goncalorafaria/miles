@@ -1,0 +1,44 @@
+# smoke_moe_sync_gateway_jupiter_fused.yaml with context parallelism 2 (expert parallelism stays 8, data parallelism
+# 4). Its twin ran out of memory in the output layer at its first training step (Beaker 01M75ZCWK3C7YPP3NV8TRRXKFG,
+# 2026-11-11): the bf16 logits of one ~16k-token episode (7.4 GiB) next to the trainer's 46 GB and the paused
+# colocated SGLang engine's 27 GB on an 80GB H100. CP 2 splits each episode over 2 GPUs, as upstream's
+# test_qwen3_5_35B_A3B_cp.py does on 8x H100; max_tokens_per_gpu 8192 covers max_seq_len / CP.
+exp_name: tmax_smoke_moe_sync_gateway_jupiter_fused_cp2
+sandbox_backend: gateway                      # containers on the fleet behind beaker.gateway_registry
+num_gpus_per_node: 8
+num_prompts: 64
+rollout_batch_size: 4
+n_samples_per_prompt: 4
+num_rollout: 3
+max_seq_len: 16384
+tensor_model_parallel_size: 1
+context_parallel_size: 2
+expert_model_parallel_size: 8
+rollout_num_gpus_per_engine: 4
+sglang_ep_size: 4
+sglang_moe_runner_backend: auto               # SGLang's own choice on Hopper; flashinfer_cutlass is upstream's B300 setting
+sglang_mem_fraction_static: 0.6
+filter_zero_std: false
+save_interval: 1000
+episode_timeout_s: 3600
+extra_args: "--log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout 1800"
+model_dir: /weka/oe-adapt-default/shashankg/miles_tmax/models
+data_dir: /weka/oe-adapt-default/shashankg/miles_tmax/datasets
+output_dir: /weka/oe-adapt-default/allennlp/deletable_checkpoint_states/shashankg/miles
+trace_dir: /weka/oe-adapt-default/allennlp/deletable_rollouts/miles
+dump_training_data: true
+
+beaker:
+  launcher: examples/tmax/run_tmax_qwen3_5_moe.py
+  cluster: ai2/jupiter
+  workspace: ai2/oe-agents
+  budget: ai2/oe-omai
+  priority: urgent
+  min_runtime: 2h                             # on ai2/oe-agents' Jupiter allocation
+  retries: 0
+  gpus: 8
+  shared_memory: 256GiB
+  image: beaker:shashankg/tmax-miles-train-d0831a475b
+  dockerhub_username: shashankg209
+  gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
+  gateway_min_replicas: 8
