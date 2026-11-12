@@ -124,7 +124,8 @@ def _jobs(experiment: str) -> list[dict] | None:
     return [
         {
             "id": job["id"],
-            "task": job.get("name", ""),
+            # A replicated task names its jobs <task>-replica-<rank>.
+            "task": re.sub(r"-replica-\d+$", "", job.get("name", "")),
             "rank": (job.get("execution") or {}).get("replicaRank") or 0,
             "exited": (job.get("status") or {}).get("exited") or "",
             "code": (job.get("status") or {}).get("exitCode", ""),
