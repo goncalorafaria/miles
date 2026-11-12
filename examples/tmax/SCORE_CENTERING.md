@@ -122,6 +122,24 @@ model/task data, episode limits, sandbox gateway and BF16 inference. NVFP4 servi
 configs are preserved for later testing. This is the full TMax entrypoint, not
 the separate HF synthetic-reward probe below.
 
+## TMax SCT128 run
+
+The full terminal-RL smoke was submitted as
+[01M78W4XJXMJBAV6HY5YR6PBC3](https://beaker.org/ex/01M78W4XJXMJBAV6HY5YR6PBC3),
+pinned to Miles `e709405` and runtime `01M78W2R0WT8YC53P4V3H3RHCH`.
+It runs `smoke_4b_dppo_tv_sct128.yaml` through the normal TMax Beaker entrypoint.
+The submitted spec maps this checkout's `/weka/gfaria` prefix to the job's
+`/weka/oe-adapt-default/gfaria` mount, runs focused Megatron preflight tests,
+and has a two-hour job timeout. At submission it was queued; submission is not
+a completed-training result.
+
+Projection, loss/gradient parity, masking, reference scoring and config tests
+passed on CPU (45 passed, one unconfigured production variant skipped). The
+projection test crosses the 4096-position boundary and checks that checkpointing
+does not retain vocabulary-sized activations. The existing Megatron model tests
+require CUDA libraries unavailable in the CPU container, so those are included
+in the GPU job's preflight instead.
+
 ## Validation scope
 
 The CPU regression selection passed 339 tests (31 skipped), including the
