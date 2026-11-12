@@ -113,5 +113,23 @@ are synthetic +1/-1 and no training weights are published back to the server.
 It is neither a terminal reward evaluation nor a Megatron production run.
 
 The SGLang port also passed all **86 tests on a Holmes GPU**, including all 24
-CUDA cases, in experiment `01M78P16591G6P96CKB9M7SKJY`. The real-model optimizer
-check in that experiment is separate from those kernel/transport results.
+CUDA cases, in experiment `01M78P16591G6P96CKB9M7SKJY`.
+
+The real-model check passed all **six modes and 18 optimizer updates** on
+2026-11-12 in experiment `01M78PF4BP4SYMB1TAVCX96CW9` (exit code 0): SCT and
+SCMC at K=32/64/128, using the prepared `Qwen3.5-4B-tmax-template` checkpoint
+with BF16 inference. One Holmes B300 served SGLang and a second trained the
+model. Each mode used two live generations of 64 response tokens and three
+updates through the actual Miles DPPO-TV score-centering loss. All losses and
+gradient norms were finite, and every update had a nonzero gradient. The pytest
+phase completed in 171.31 seconds, including model loading and cold training
+kernel compilation; this is a correctness check, not an overhead benchmark.
+
+The first real-model attempt exposed a tokenizer API mismatch (chat-template
+output was a `BatchEncoding`); explicitly requesting token IDs fixed it before
+the successful run. The successful source revisions were Miles `55fbb24` and
+SGLang `34aff9cd3c`. Result dataset `01M78PF4BXXH1X7WRSQ6BBV8K4` contains the
+JUnit report, server log and success marker. The shared trainer model retains
+updates between modes while the rollout server keeps its initial weights, so
+this also exercises scoring against a stale rollout policy. It does not cover
+Megatron parallelism, terminal rewards, weight publication or NVFP4 inference.
