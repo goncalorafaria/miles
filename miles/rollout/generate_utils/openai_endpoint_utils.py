@@ -4,6 +4,7 @@ Utilities for the OpenAI endpoint
 
 import asyncio
 import logging
+import os
 import random
 from argparse import Namespace
 
@@ -21,7 +22,8 @@ from miles.utils.types import Sample
 
 logger = logging.getLogger(__name__)
 
-_SESSION_REQUEST_TIMEOUT = 120
+# Collecting a session's samples (and deleting it): a slow session server fails the sample after this many seconds.
+_SESSION_REQUEST_TIMEOUT = float(os.environ.get("MILES_SESSION_REQUEST_TIMEOUT_S", "120"))
 
 
 class OpenAIEndpointTracer:
