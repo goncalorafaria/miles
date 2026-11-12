@@ -1,0 +1,65 @@
+# prod_4node_gateway.yaml (open-instruct's production TMax recipe on 4 nodes, fully async, 64k, sandboxes on a podman
+# fleet) for Qwen3.5-35B-A3B through run_tmax_qwen3_5_moe.py, with R3. Same recipe; the differences:
+#   * training (2 nodes, 16 B300s): TP 1 x CP 2 x DP 8, experts sharded 8 ways within a node (EP 8, expert-DP 2), so the
+#     MoE all-to-all stays on NVLink; ~67 GB of weights, fp32 grads and sharded Adam per GPU before activations;
+#   * rollout (2 nodes): 16 SGLang engines of 1 GPU each, as for the 9B (the 72 GB bf16 weights fit a 288GB B300),
+#     with the B300 MoE runner (flashinfer_cutlass);
+#   * the podman-jupiter128-20261105 fleet, the image tmax-miles-train-d0831a475b (the Holmes MoE smokes passed on both,
+#     2026-11-11), and the model and dataset on oe-adapt-default;
+#   * urgent priority without min_runtime, as the user asked (2026-11-12); retries resume from exp_name's checkpoint.
+# A 35B checkpoint with Adam state is about 0.5 TB, so keep_last_n_checkpoints 2 (the 9B keeps 3) holds ~1 TB on
+# oe-adapt-default, plus a 72 GB HF snapshot every 20 steps. Submit with:
+#   python examples/tmax/beaker/submit.py examples/tmax/configs/prod_4node_gateway_moe_35b.yaml
+exp_name: tmax_prod4node_gateway_qwen35_35b_a3b
+sandbox_backend: gateway                      # containers on the fleet behind beaker.gateway_registry
+model_name: Qwen3.5-35B-A3B-tmax-template     # shatu/Qwen3.5-35B-A3B, hamishivi/Qwen3.5-9B's template change
+num_nodes: 4
+num_gpus_per_node: 8
+rollout_batch_size: 8                         # --num_unique_prompts_rollout 8
+n_samples_per_prompt: 32                      # --num_samples_per_prompt_rollout 32
+num_rollout: 500                              # --total_episodes 128000 / 256
+max_seq_len: 67584                            # --response_length 65536 + --max_prompt_token_length 2048
+rollout_max_response_len: 16384               # --per_turn_max_tokens 16384
+max_steps: 64                                 # --max_steps 64
+filter_zero_std: true                         # --active_sampling
+async_rollout_gpus: 16                        # 16 engines on the last 2 nodes
+max_weight_staleness: 4                       # groups older than --async_steps 4 are dropped
+async_max_concurrent_samples: 512             # --pool_size 512: 2 batches in flight
+async_data_buffer_capacity_factor: 4          # --async_steps 4: generation runs at most 4 steps ahead
+tensor_model_parallel_size: 1
+context_parallel_size: 2                      # 64k trajectories: CP 2 x DP 8 over the 16 training GPUs
+expert_model_parallel_size: 8                 # experts within a node
+max_tokens_per_gpu: 34816                     # >= max_seq_len / CP, so the longest trajectory fits one micro-batch
+optimizer_cpu_offload: false
+sglang_mem_fraction_static: 0.8
+sandbox_start_concurrency: 64                 # concurrent container starts on the fleet, rollout-wide
+start_failure: drop                           # a container the fleet cannot start drops its group (prod_4node_gateway)
+save_interval: 5                              # --checkpoint_state_freq 5
+hf_snapshot_every: 20                         # --checkpoint_hf_freq 20 kept forever; export errors are logged, not fatal
+extra_args: "--log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout 1800"
+model_dir: /weka/oe-adapt-default/shashankg/miles_tmax/models
+data_dir: /weka/oe-adapt-default/shashankg/miles_tmax/datasets
+output_dir: /weka/oe-adapt-default/allennlp/deletable_checkpoint_states/shashankg/miles
+trace_dir: /weka/oe-adapt-default/allennlp/deletable_rollouts/miles
+dump_training_data: true                      # --save_traces + --save_trainer_logprobs: each step's batch, tokens on
+wandb_project: oe-general-agents
+wandb_entity: ai2-llm
+
+beaker:
+  launcher: examples/tmax/run_tmax_qwen3_5_moe.py
+  cluster: ai2/holmes
+  workspace: ai2/oe-agents-holmes
+  budget: ai2/oe-omai
+  priority: urgent
+  retries: 10                                 # a retry resumes from exp_name's checkpoint
+  nodes: 4
+  gpus: 8
+  shared_memory: 512GiB
+  image: beaker:shashankg/tmax-miles-train-d0831a475b
+  dockerhub_username: shashankg209
+  # The fleet's head registry: the head starts a gateway from it and waits for enough replicas (512 sandboxes / 8 each).
+  gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
+  gateway_min_replicas: 64
+  keep_last_n_checkpoints: 2                  # ~0.5 TB each with Adam state (the 9B keeps 3)
+  env:
+    NCCL_DEBUG: WARN                          # mason's default is ERROR, which hides why a collective stalls
