@@ -29,6 +29,7 @@ from miles.backends.megatron_utils.ft.indep_dp import allreduce_grads_and_losses
 from miles.backends.megatron_utils.local_weight_checksum import dump_local_weight_checksums
 from miles.backends.megatron_utils.lora.native import wrap_model_provider_with_lora
 from miles.backends.megatron_utils.optimizer_state_reset import reset_optimizer_states
+from miles.backends.megatron_utils.score_centering_head import ChunkedScoreHead
 from miles.backends.training_utils.data.rollout import DataIterator, get_batch
 from miles.backends.training_utils.data.sampling_mask import get_rollout_sampling_masks
 from miles.backends.training_utils.loss.objective import loss_function
@@ -354,7 +355,13 @@ def forward_only(
 
             set_tokens_per_adapter_slot(model, batch["adapter_token_counts"])
 
+        score_head = (
+            ChunkedScoreHead(args.score_centering_head_chunk_size)
+            if getattr(args, "score_centering_head_chunk_size", 0)
+            else None
+        )
         output_tensor = model(
+            **({"output_processor": score_head.capture} if score_head is not None else {}),
             input_ids=tokens,
             position_ids=None,
             attention_mask=None,
@@ -377,7 +384,7 @@ def forward_only(
         if use_rollout_sampling_mask:
             callback_kwargs["rollout_sampling_mask"] = rollout_sampling_mask
 
-        return output_tensor, partial(f, **callback_kwargs)
+        return output_tensor, partial(score_head.log_probs if score_head is not None else f, **callback_kwargs)
 
     # Turn on evaluation mode which disables dropout.
     for model_module in model:
@@ -501,7 +508,13 @@ def run_forward_backward_pass(
         for m in all_replay_managers:
             m.stage = "replay_forward"
 
+        score_head = (
+            ChunkedScoreHead(args.score_centering_head_chunk_size)
+            if getattr(args, "score_centering_head_chunk_size", 0)
+            else None
+        )
         if return_schedule_plan:
+            assert score_head is None, "Chunked score head requires the standard pipeline schedule"
             assert not args.enable_mtp_training, "MTP training should not be enabled when using combined 1f1b"
             assert not args.enable_witness, "Witness is not supported with combined 1f1b (build_schedule_plan)"
             output_tensor = model.build_schedule_plan(
@@ -528,6 +541,8 @@ def run_forward_backward_pass(
             if (x := batch["multimodal_train_inputs"]) is not None:
                 forward_kwargs.update(x)
 
+            if score_head is not None:
+                forward_kwargs["output_processor"] = score_head.capture
             output_tensor = model(
                 **forward_kwargs, fp32_output=args.loss_type not in ("policy_loss", "sft_loss", "score_centering")
             )
@@ -542,6 +557,7 @@ def run_forward_backward_pass(
             num_microbatches,
             apply_megatron_loss_scaling=True,
             num_rollouts=num_rollouts,
+            loss_impl=score_head.loss if score_head is not None else None,
         )
 
     # Forward pass.

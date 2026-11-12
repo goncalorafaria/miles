@@ -1715,6 +1715,13 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             )
             parser.add_argument("--score-centering-estimator", choices=["topk", "mc"], default="topk")
             parser.add_argument(
+                "--score-centering-head-chunk-size",
+                type=int,
+                default=0,
+                help="Checkpoint the LM-head projection and score normalization in chunks of this many positions "
+                "(0 disables; Megatron score centering with TP=CP=PP=1).",
+            )
+            parser.add_argument(
                 "--rollout-score-array",
                 action="store_true",
                 help="Preserve generated candidate arrays through SGLang and base64 HTTP transport.",

@@ -229,6 +229,8 @@ RUN rm -rf /root/.cache/pip /root/flash-attention
 
 # ====================================== Install sglang-miles ============================================
 
+COPY docker/patch/sglang_score_logprobs.patch /tmp/sglang_score_logprobs.patch
+
 # Install sglang at SGLANG_COMMIT, fetched by its hash because sglang-miles is rewritten from
 # time to time, or else at the sglang-miles HEAD.
 # The base image ships the Rust extension modules prebuilt (SGLANG_RUST_BUILD_MODE=never);
@@ -237,8 +239,8 @@ RUN rm -rf /root/.cache/pip /root/flash-attention
 RUN cd /sgl-workspace/sglang && \
     git fetch origin ${SGLANG_COMMIT:-${SGLANG_BRANCH}} && \
     git checkout -f FETCH_HEAD && \
-    git apply --check /tmp/patches/sglang_score_logprobs.patch && \
-    git apply /tmp/patches/sglang_score_logprobs.patch && \
+    git apply --check /tmp/sglang_score_logprobs.patch && \
+    git apply /tmp/sglang_score_logprobs.patch && \
     SGLANG_BUILD_RUST_EXTS=none pip install -e "python[all]" --no-deps
 
 COPY docker/install-kube-tools.sh /tmp/install-kube-tools.sh

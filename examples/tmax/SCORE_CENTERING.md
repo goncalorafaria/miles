@@ -6,6 +6,7 @@ unchanged unless `--loss-type score_centering` is enabled.
 
 ## Configs
 
+- [SCT128 smoke, 4096-position LM-head chunks](configs/smoke_4b_dppo_tv_sct128.yaml)
 - [SCT32 smoke](configs/smoke_4b_dppo_tv_sct32.yaml)
 - [SCMC32 smoke](configs/smoke_4b_dppo_tv_scmc32.yaml)
 - [SCT32 production layout](configs/prod_4b_dppo_tv_sct32.yaml)
@@ -16,9 +17,11 @@ configs retain 256 responses per update and the 64K episode context. They use
 BF16 inference; the [NVFP4 inference-only configs](configs/inference/README.md)
 still require dense checkpoint conversion and weight-publication support for RL.
 
-Build the patched image using the [existing image procedure](beaker/README.md#images)
-and replace `beaker.image` in the selected config with its immutable ID. The
-checked-in image name is a placeholder, not a published image. The config uses
+The SCT128 smoke config pins the patched runtime `01M78W2R0WT8YC53P4V3H3RHCH`,
+built with [Dockerfile.score-logprobs](docker/Dockerfile.score-logprobs) from the
+working TMax base image. For the other configs, build the patched image using
+the [existing image procedure](beaker/README.md#images) and replace their
+placeholder `beaker.image` with its immutable ID. The config uses
 the user's output/trace directories and gateway registry; supply your own Docker
 registry credentials if its sandbox images require them. The model and task data
 are the prepared, shared TMax inputs. These configs have not yet completed a
@@ -92,6 +95,32 @@ or CUDA synchronization is introduced.
    computes the combined loss, and uses the existing loss reduction, entropy and
    reference-KL handling. MC diagnostics report mean probe probabilities instead
    of labeling repeated draws as head probability mass.
+
+## Chunked LM-head projection
+
+The SCT128 smoke config enables `--score-centering-head-chunk-size 4096` and
+`--log-probs-chunk-size 4096`. The first bounds the projection itself: Megatron's
+output processor returns final hidden states instead of full-sequence logits.
+The loss projects response positions in chunks, checkpoints projection and
+normalization together, and retains only sampled/candidate log probabilities.
+Backward recomputes vocabulary tensors one chunk at a time. The second knob
+bounds the normalization within each projection chunk. Setting only the second
+knob does not avoid allocating full-sequence vocabulary logits.
+
+The head adapter also handles reference/actor forward-only scoring, preserving
+the TMax reference-KL diagnostic. Shared loss scaling, tool masks, entropy and
+DPPO-TV remain in the same Miles loss path. The implementation currently supports
+an unsharded affine head (TP=CP=PP=1, with data parallelism supported), no LoRA,
+FP8, MTP, sampling-support replay or overlapping parameter gathers. Unsupported
+launch combinations fail validation. `sc_head_chunk_size` and `sc_head_chunks`
+make the active training path visible in the metrics. No CUDA synchronization
+was added.
+
+The SCT128 recipe keeps the existing TMax smoke workload: 2 trainer + 2 inference
+GPUs, 32 terminal responses per update, three updates, the same prepared TMax
+model/task data, episode limits, sandbox gateway and BF16 inference. NVFP4 serving
+configs are preserved for later testing. This is the full TMax entrypoint, not
+the separate HF synthetic-reward probe below.
 
 ## Validation scope
 

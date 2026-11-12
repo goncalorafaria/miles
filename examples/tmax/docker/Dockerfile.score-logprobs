@@ -1,0 +1,9 @@
+# Thin derivative of the working TMax image 01M74EM3YYX7J608ZQYH4R8V9Y.
+# Build from the repository root; the training checkout is pinned by submit.py.
+FROM gcr.io/ai2-beaker-core/public/dbpv4c89245c73fo11r0@sha256:a95a0359c53e94f14171e4e2ba403dbb8825696a67cae318ebb3aa4ed8f9c3b9
+COPY docker/patch/sglang_score_logprobs.patch /tmp/sglang_score_logprobs.patch
+RUN cd /sgl-workspace/sglang && \
+    test "$(git rev-parse HEAD)" = 7b6993a310d0dbb67929b51582d1729a6295e417 && \
+    git apply --check /tmp/sglang_score_logprobs.patch && \
+    git apply /tmp/sglang_score_logprobs.patch && \
+    rm /tmp/sglang_score_logprobs.patch

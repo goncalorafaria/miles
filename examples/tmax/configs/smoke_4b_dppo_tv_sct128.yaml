@@ -1,0 +1,51 @@
+# TMax terminal-RL smoke: BF16 + DPPO-TV + SCT128 arrays + 4096-position LM-head chunks.
+exp_name: tmax_4b_smoke_dppo_tv_sct128
+model_name: Qwen3.5-4B-tmax-template
+sandbox_backend: gateway
+num_nodes: 1
+num_gpus_per_node: 4
+async_rollout_gpus: 2
+rollout_batch_size: 4
+n_samples_per_prompt: 8
+num_rollout: 3
+max_seq_len: 67584
+rollout_max_response_len: 16384
+max_steps: 64
+filter_zero_std: true
+max_weight_staleness: 4
+async_max_concurrent_samples: 64
+async_data_buffer_capacity_factor: 4
+tensor_model_parallel_size: 1
+context_parallel_size: 1
+max_tokens_per_gpu: 67584
+optimizer_cpu_offload: false
+sglang_mem_fraction_static: 0.8
+sandbox_start_concurrency: 16
+start_failure: drop
+save_interval: 1000
+extra_args: --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
+  1800 --loss-type score_centering --score-centering-estimator topk --rollout-score-array
+  --rollout-top-logprobs-num 128 --score-centering-is none --score-centering-head-chunk-size 4096 --log-probs-chunk-size 4096
+model_dir: /weka/nora-default/shashankg/miles_tmax_v2/models
+data_dir: /weka/nora-default/shashankg/miles_tmax_v2/datasets
+output_dir: /weka/oe-adapt-default/gfaria/tmax-score-logprobs/output
+trace_dir: /weka/oe-adapt-default/gfaria/tmax-score-logprobs/traces
+dump_training_data: true
+beaker:
+  cluster: ai2/holmes
+  workspace: ai2/oe-agents-holmes
+  budget: ai2/oe-omai
+  priority: normal
+  preemptible: false
+  min_runtime: 30m
+  retries: 0
+  gpus: 4
+  shared_memory: 256GiB
+  image: beaker:01M78W2R0WT8YC53P4V3H3RHCH
+  gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
+  gateway_min_replicas: 8
+  secrets:
+    WANDB_API_KEY: gfaria_WANDB_API_KEY
+  env:
+    SGLANG_RETURN_ORIGINAL_LOGPROB: '0'
+policy_loss: dppo_tv

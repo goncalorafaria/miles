@@ -8,6 +8,28 @@ from miles.utils.rollout_topk_logprobs import validate_rollout_topk_logprobs_sam
 
 
 def validate_score_centering_args(args: Namespace) -> None:
+    head_chunk = getattr(args, "score_centering_head_chunk_size", 0)
+    if head_chunk < 0:
+        raise ValueError("--score-centering-head-chunk-size must be nonnegative")
+    if head_chunk:
+        if args.loss_type != "score_centering" or args.train_backend != "megatron":
+            raise ValueError("LM-head chunking requires Megatron --loss-type score_centering")
+        if any(
+            getattr(args, key, 1) != 1
+            for key in ("tensor_model_parallel_size", "context_parallel_size", "pipeline_model_parallel_size")
+        ):
+            raise ValueError("LM-head chunking currently requires TP=CP=PP=1")
+        if getattr(args, "lora_rank", 0) > 0:
+            raise ValueError("LM-head chunking does not support LoRA adapters")
+        for key in (
+            "enable_mtp_training",
+            "fp8",
+            "recompute_loss_function",
+            "use_sampling_support_replay",
+            "overlap_param_gather",
+        ):
+            if getattr(args, key, None):
+                raise ValueError(f"LM-head chunking does not support --{key.replace('_', '-')}")
     if getattr(args, "loss_type", None) != "score_centering":
         return
     if getattr(args, "policy_loss_type", None) == "dppo_tv" and args.score_centering_is != "none":

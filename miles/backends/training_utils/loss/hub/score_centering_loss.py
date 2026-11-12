@@ -2,6 +2,7 @@
 
 from argparse import Namespace
 from collections.abc import Callable
+from functools import partial
 
 import torch
 
@@ -17,6 +18,7 @@ from miles.backends.training_utils.loss.hub.score_centering import (
     score_centering_loss,
     selected_log_probs_and_entropy,
 )
+from miles.backends.training_utils.loss.hub.score_centering.chunked_head import chunked_head_log_probs
 from miles.backends.training_utils.parallel import get_parallel_state
 from miles.utils.types import RolloutBatch
 
@@ -35,7 +37,9 @@ def _candidate_ids(batch: RolloutBatch, sample: int, indices: torch.Tensor) -> t
     return ids
 
 
-def _candidate_log_probs(args: Namespace, batch: RolloutBatch, logits: torch.Tensor) -> dict[str, list[torch.Tensor]]:
+def _candidate_log_probs(
+    args: Namespace, batch: RolloutBatch, logits: torch.Tensor, *, project: Callable | None = None
+) -> dict[str, list[torch.Tensor]]:
     parallel = get_parallel_state()
     result = {"selected": []}
     if args.use_kl_loss:
@@ -58,7 +62,7 @@ def _candidate_log_probs(args: Namespace, batch: RolloutBatch, logits: torch.Ten
         indices = torch.as_tensor(list(indices), dtype=torch.long)
         ids = _candidate_ids(batch, i, indices).to(logits.device)
         ids = torch.cat((tokens.unsqueeze(-1), ids), dim=-1)
-        selected, entropy = selected_log_probs_and_entropy(
+        selected, entropy = (project or selected_log_probs_and_entropy)(
             chunk,
             ids,
             group=parallel.tp.group if parallel.tp.size > 1 else None,
@@ -161,6 +165,48 @@ def score_centering_loss_function(
     sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     probabilities = _candidate_log_probs(args, batch, logits)
+    return _loss_from_probabilities(args, batch, probabilities, logits.device, sum_of_sample_mean)
+
+
+def score_centering_loss_from_hidden(
+    args: Namespace,
+    batch: RolloutBatch,
+    hidden: torch.Tensor,
+    sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
+    *,
+    weight: torch.Tensor,
+    bias: torch.Tensor | None = None,
+    head_chunk_size: int,
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+    """Single-rank affine LM head with checkpointed projection and normalization.
+
+    The caller must bypass its model's normal LM head and supply final hidden
+    states. The Megatron output processor uses this entrypoint when head chunking is enabled.
+    """
+    parallel = get_parallel_state()
+    if parallel.tp.size != 1 or parallel.cp.size != 1 or parallel.pp.size != 1:
+        raise ValueError("Chunked hidden-state score centering currently requires TP=CP=PP=1")
+    if args.true_on_policy_mode:
+        raise ValueError("Chunked hidden-state score centering does not support true-on-policy mode")
+    if head_chunk_size <= 0:
+        raise ValueError("head_chunk_size must be positive")
+    project = partial(chunked_head_log_probs, weight=weight, bias=bias, head_chunk_size=head_chunk_size)
+    probabilities = _candidate_log_probs(args, batch, hidden, project=project)
+    loss, metrics = _loss_from_probabilities(args, batch, probabilities, hidden.device, sum_of_sample_mean)
+    metrics["sc_head_chunk_size"] = loss.new_tensor(head_chunk_size)
+    metrics["sc_head_chunks"] = loss.new_tensor(
+        sum((x.size(0) + head_chunk_size - 1) // head_chunk_size for x in probabilities["selected"])
+    )
+    return loss, metrics
+
+
+def _loss_from_probabilities(
+    args: Namespace,
+    batch: RolloutBatch,
+    probabilities: dict[str, list[torch.Tensor]],
+    device: torch.device,
+    sum_of_sample_mean: Callable[[torch.Tensor], torch.Tensor],
+) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     selected = torch.cat(probabilities["selected"])
     active = torch.cat(
         get_local_response_loss_masks(
@@ -173,8 +219,8 @@ def score_centering_loss_function(
     ).bool()
     rollout = torch.where(active, torch.cat(batch["rollout_log_probs"]).detach(), 0.0)
     advantages = torch.where(active, torch.cat(batch["advantages"]).detach(), 0.0)
-    ids = _local_candidates(args, batch, "rollout_topk_token_ids", logits.device)
-    head = _local_candidates(args, batch, "rollout_topk_log_probs", logits.device)
+    ids = _local_candidates(args, batch, "rollout_topk_token_ids", device)
+    head = _local_candidates(args, batch, "rollout_topk_log_probs", device)
     token_loss, metrics = score_centering_loss(
         ScoreCenteringInputs(
             train_log_probs=selected[:, 0],

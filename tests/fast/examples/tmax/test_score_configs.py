@@ -15,9 +15,11 @@ from miles.utils.score_centering import validate_score_centering_args
 
 
 @pytest.mark.parametrize("layout", ["smoke", "prod"])
-@pytest.mark.parametrize("mode,estimator", [("sct32", "topk"), ("scmc32", "mc")])
+@pytest.mark.parametrize("mode,estimator", [("sct32", "topk"), ("scmc32", "mc"), ("sct128", "topk")])
 def test_tmax_combined_config_reaches_train_command(monkeypatch, layout, mode, estimator):
     path = Path(__file__).resolve().parents[4] / "examples/tmax/configs" / f"{layout}_4b_dppo_tv_{mode}.yaml"
+    if mode == "sct128" and layout == "prod":
+        pytest.skip("SCT128 is qualified with the smoke layout first")
     config = yaml.safe_load(path.read_text())
     config.pop("beaker")
     config["gateway_url"] = "http://test-gateway"
@@ -33,16 +35,20 @@ def test_tmax_combined_config_reaches_train_command(monkeypatch, layout, mode, e
         ("--loss-type", "score_centering"),
         ("--policy-loss-type", "dppo_tv"),
         ("--score-centering-estimator", estimator),
-        ("--rollout-top-logprobs-num", "32"),
+        ("--rollout-top-logprobs-num", "128" if mode == "sct128" else "32"),
     ):
         assert argv.count(flag) == 1 and argv[argv.index(flag) + 1] == value
     assert "--rollout-score-array" in argv and "--use-rollout-logprobs" in argv
+    if mode == "sct128":
+        assert argv[argv.index("--score-centering-head-chunk-size") + 1] == "4096"
     args = _args(
         policy_loss_type="dppo_tv",
         dppo_tv_threshold=0.1,
         use_rollout_logprobs=True,
         rollout_score_array=True,
-        rollout_top_logprobs_num=32,
+        rollout_top_logprobs_num=128 if mode == "sct128" else 32,
+        score_centering_head_chunk_size=4096 if mode == "sct128" else 0,
+        train_backend="megatron",
         score_centering_estimator=estimator,
     )
     validate_policy_loss_type_args(args)

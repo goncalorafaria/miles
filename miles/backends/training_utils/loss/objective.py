@@ -1,4 +1,5 @@
 from argparse import Namespace
+from collections.abc import Callable
 import torch
 from torch.utils.checkpoint import checkpoint
 
@@ -138,6 +139,7 @@ def loss_function(
     apply_megatron_loss_scaling: bool = False,
     num_rollouts: int | None = None,
     num_step_tokens: torch.Tensor | None = None,
+    loss_impl: Callable | None = None,
 ) -> tuple[torch.Tensor, int | torch.Tensor, dict]:
     """Dispatch to the configured loss and rescale for Megatron integration.
 
@@ -153,7 +155,8 @@ def loss_function(
         batch: Mini-batch with "loss_masks", "response_lengths", and other
             keys required by the selected loss function.
         num_microbatches: Number of gradient accumulation steps.
-        logits: Model outputs (policy or value head).
+        logits: Model outputs (policy or value head), or hidden states with loss_impl.
+        loss_impl: Optional output-stage loss implementation; keeps shared normalization and logging.
         num_rollouts: This step's rollout count (total across DP), used as
             the loss normalizer; None falls back to the legacy batch/args value.
         num_step_tokens: This step's `count_loss_tokens` (total across DP), the
@@ -182,7 +185,7 @@ def loss_function(
         denominators=batch.get("rollout_mask_sums", None),
     )
 
-    func = get_loss_function(args, batch.get("loss_fn"))
+    func = loss_impl if loss_impl is not None else get_loss_function(args, batch.get("loss_fn"))
     # with --log-probs-backend fused the loss's backward overwrites `logits` with their gradient
     # (see get_log_probs_and_entropy); nothing may read them after it
 
