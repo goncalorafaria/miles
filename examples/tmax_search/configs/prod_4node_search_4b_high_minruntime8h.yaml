@@ -1,0 +1,51 @@
+# prod_4node_search_4b.yaml at priority high with an 8 h minimum runtime. Without one, the run sat on Holmes'
+# unallocated capacity and was preempted twice before its first step (01M78E9ACHBGFNBMYWC0WWGEGH: a starting Miles
+# replica, then the judge, each taken by an allocated job). The Miles task and the judge are now allocated for 8 h,
+# then resume automatically when preempted; the CPU services keep none, as in Prime-RL. Submit with:
+#   python examples/tmax/beaker/submit.py examples/tmax_search/configs/prod_4node_search_4b_high_minruntime8h.yaml
+exp_name: search_prod4node_4b_bcrl_v11_high8h
+model_name: Qwen3.5-4B
+prime_rl_source: /weka/oe-adapt-default/shashankg/miles_search/prime-rl-sources/a5fcb924645d9bd8f326efd5087c8de6447c83fe17c6d07c36e99ee736d30a37/source
+prime_rl_config: configs/experiments/search-agent-bc-rl-v1-1-fp32-lr5e-7/rl.toml
+num_nodes: 4
+num_gpus_per_node: 8
+async_rollout_gpus: 16
+rollout_batch_size: 8
+n_samples_per_prompt: 32
+num_rollout: 200
+async_max_concurrent_samples: 512
+max_seq_len: 131072
+rollout_max_response_len: 32768
+tensor_model_parallel_size: 1
+context_parallel_size: 1
+max_tokens_per_gpu: 131072
+optimizer_cpu_offload: false
+fp32_lm_head: true
+save_interval: 20
+hf_snapshot_every: 20
+extra_args: "--log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout 1800"
+model_dir: /weka/nora-default/shashankg/miles_tmax_v2/models
+data_dir: /weka/nora-default/shashankg/miles_tmax_v2/datasets
+# Checkpoints (about 50 GB each, 3 kept) and HF snapshots where eval jobs can read them.
+output_dir: /weka/oe-adapt-default/allennlp/deletable_checkpoint_states/shashankg/miles
+trace_dir: /weka/oe-adapt-default/allennlp/deletable_rollouts/miles
+dump_training_data: true
+wandb_project: oe-general-agents
+wandb_entity: ai2-llm
+
+beaker:
+  launcher: examples/tmax_search/run_search_qwen3_5.py
+  cluster: ai2/holmes
+  workspace: ai2/oe-agents-holmes
+  budget: ai2/oe-omai
+  priority: high
+  min_runtime: 8h
+  retries: 3                                  # Prime-RL's allowed_task_retries
+  nodes: 4
+  gpus: 8
+  shared_memory: 512GiB
+  image: beaker:shashankg/tmax-miles-train-d0831a475b  # smoke: smoke_search_4b_fp32_head_imgd0831a475b.yaml
+  keep_last_n_checkpoints: 3                  # Prime-RL's ckpt keep_last 3
+  env:
+    NCCL_DEBUG: WARN
+  search_services: {}                         # Prime-RL's services at its run.yaml's counts
