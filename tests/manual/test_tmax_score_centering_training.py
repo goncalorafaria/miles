@@ -72,7 +72,7 @@ def test_generated_arrays_train_real_model(live_model, estimator, k):
     samples = []
     for index, question in enumerate(("What is 17 times 23?", "What is 13 times 19?")):
         messages = [{"role": "user", "content": question}]
-        prompt = tokenizer.apply_chat_template(messages, tokenize=True, add_generation_prompt=True)
+        prompt = tokenizer.apply_chat_template(messages, tokenize=True, return_dict=False, add_generation_prompt=True)
         body = prepare_chat_request(
             {"model": "tmax-score-smoke", "messages": messages, "max_tokens": 64, "seed": 17 + index},
             SimpleNamespace(resolve_request_args=lambda request, **kwargs: request),
