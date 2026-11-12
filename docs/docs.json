@@ -270,7 +270,8 @@
        "examples/retool-v2",
        "examples/swe-agent-harbor-docker",
        "examples/tmax",
-       "examples/tmax/beaker"
+       "examples/tmax/beaker",
+       "examples/tmax/configs/inference"
       ]
      },
      {

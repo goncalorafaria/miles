@@ -1,0 +1,1011 @@
+diff --git a/python/sglang/srt/layers/mc_logprobs.py b/python/sglang/srt/layers/mc_logprobs.py
+new file mode 100644
+index 0000000000..e00e93025b
+--- /dev/null
++++ b/python/sglang/srt/layers/mc_logprobs.py
+@@ -0,0 +1,122 @@
++# SPDX-License-Identifier: Apache-2.0
++# SPDX-FileCopyrightText: Copyright contributors to the vLLM project
++"""Independent categorical probes, with replacement, from processed logits."""
++
++import torch
++
++import triton
++import triton.language as tl
++
++
++@triton.jit
++def _partials(
++    X,
++    Max,
++    Sum,
++    V: tl.constexpr,
++    STRIDE: tl.constexpr,
++    TILES: tl.constexpr,
++    BLOCK: tl.constexpr,
++):
++    row, tile = tl.program_id(0), tl.program_id(1)
++    ids = tile * BLOCK + tl.arange(0, BLOCK)
++    x = tl.load(X + row * STRIDE + ids, ids < V, other=-float("inf")).to(tl.float32)
++    m = tl.max(x, 0)
++    z = tl.sum(tl.exp(x - tl.maximum(m, -3.402823466e38)), 0)
++    tl.store(Max + row * TILES + tile, m)
++    tl.store(Sum + row * TILES + tile, z)
++
++
++@triton.jit
++def _draw(
++    X,
++    Max,
++    Sum,
++    Seeds,
++    Positions,
++    OutIds,
++    OutLP,
++    V: tl.constexpr,
++    STRIDE: tl.constexpr,
++    TILES: tl.constexpr,
++    SAMPLES: tl.constexpr,
++    REDUCE: tl.constexpr,
++    BLOCK: tl.constexpr,
++):
++    row, draw = tl.program_id(0), tl.program_id(1)
++    t = tl.arange(0, REDUCE)
++    m = tl.load(Max + row * TILES + t, t < TILES, other=-float("inf"))
++    z = tl.load(Sum + row * TILES + t, t < TILES, other=0.0)
++    maximum = tl.max(m, 0)
++    mass = z * tl.exp(m - maximum)
++    cdf = tl.cumsum(mass, 0)
++    total = tl.sum(mass, 0)
++    seed = tl.load(Seeds + row).to(tl.uint64) ^ 0x6A09E667F3BCC909
++    pos = tl.load(Positions + row).to(tl.uint32)
++    # A separate Philox domain leaves response RNG untouched. Fixed stride
++    # keeps draws invariant to batch composition and requested sample count.
++    u = tl.rand(seed, pos * 128 + draw)
++    cdf_total = tl.sum(tl.where(t == TILES - 1, cdf, 0.0), 0)
++    target = tl.minimum(u * cdf_total, cdf_total * (1.0 - 1.1920928955078125e-7))
++    tile = tl.min(tl.where((cdf > target) & (mass > 0), t, TILES), 0)
++    before = tl.sum(tl.where(t == tile - 1, cdf, 0.0), 0)
++    tile_m = tl.sum(tl.where(t == tile, m, 0.0), 0)
++    # Avoid 0 * -inf when reducing masked empty tiles.
++    local_scale = tl.exp(tile_m - maximum)
++    j = tl.arange(0, BLOCK)
++    ids = tile * BLOCK + j
++    x = tl.load(X + row * STRIDE + ids, ids < V, other=-float("inf")).to(tl.float32)
++    weights = tl.exp(x - tile_m)
++    local_cdf = tl.cumsum(weights, 0)
++    local_total = tl.sum(tl.where(j == BLOCK - 1, local_cdf, 0.0), 0)
++    local_target = tl.minimum(
++        tl.maximum((target - before) / local_scale, 0.0),
++        local_total * (1.0 - 1.1920928955078125e-7),
++    )
++    token = tl.min(tl.where((local_cdf > local_target) & (weights > 0), ids, V), 0)
++    value = tl.load(X + row * STRIDE + token).to(tl.float32)
++    logz = maximum + tl.log(total)
++    tl.store(OutIds + row * SAMPLES + draw, token)
++    tl.store(OutLP + row * SAMPLES + draw, value - logz)
++
++
++def compute_mc_scores(logits, seeds, positions, block=4096, num_samples=32):
++    """32, 64, or 128 independent categorical draws per row, with replacement.
++
++    Input: processed, temperature-scaled logits, with finite support per row.
++    Returns int32 IDs and float32 full-vocabulary normalized log probabilities.
++    Separate seed domain leaves response sampling unchanged. No Python scalars
++    or CPU synchronization are introduced in the draw path.
++    """
++    if num_samples not in (32, 64, 128):
++        raise ValueError("num_samples must be 32, 64, or 128")
++    batch, vocab = logits.shape
++    if logits.stride(1) != 1 or seeds.numel() != batch or positions.numel() != batch:
++        raise ValueError(
++            "MC probes require contiguous vocabulary rows and one seed/position per row"
++        )
++    tiles = triton.cdiv(vocab, block)
++    maxima = torch.empty((batch, tiles), device=logits.device, dtype=torch.float32)
++    sums = torch.empty_like(maxima)
++    ids = torch.empty((batch, num_samples), device=logits.device, dtype=torch.int32)
++    lp = torch.empty((batch, num_samples), device=logits.device, dtype=torch.float32)
++    if batch:
++        _partials[(batch, tiles)](
++            logits, maxima, sums, vocab, logits.stride(0), tiles, block
++        )
++        _draw[(batch, num_samples)](
++            logits,
++            maxima,
++            sums,
++            seeds,
++            positions,
++            ids,
++            lp,
++            vocab,
++            logits.stride(0),
++            tiles,
++            num_samples,
++            triton.next_power_of_2(tiles),
++            block,
++        )
++    return lp, ids
+diff --git a/python/sglang/srt/layers/sampler.py b/python/sglang/srt/layers/sampler.py
+index e77b853de0..e9e4195c74 100644
+--- a/python/sglang/srt/layers/sampler.py
++++ b/python/sglang/srt/layers/sampler.py
+@@ -35,6 +35,8 @@ from sglang.srt.utils.common import (
+ )
+ 
+ if is_cuda():
++    from sglang.srt.layers.mc_logprobs import compute_mc_scores
++
+     from flashinfer.sampling import (
+         min_p_sampling_from_probs,
+         top_k_top_p_sampling_from_probs,
+@@ -163,6 +165,15 @@ class Sampler(nn.Module):
+                 to get the unique seed for each position.
+         """
+         logits = logits_output.next_token_logits
++        mc_counts = sampling_info.mc_sample_counts or [0] * logits.shape[0]
++        mc_flags = [count > 0 for count in mc_counts]
++        array_flags = sampling_info.array_logprob_flags or [False] * logits.shape[0]
++        has_mc = any(mc_flags)
++        mc_logits = None
++        if has_mc and (not logits.is_cuda or SGLANG_RETURN_ORIGINAL_LOGPROB):
++            raise ValueError(
++                "MC probes require CUDA and processed rollout log probabilities"
++            )
+         _trace_e2e_sampler(
+             "forward_enter",
+             logits_shape=tuple(logits.shape),
+@@ -212,6 +223,9 @@ class Sampler(nn.Module):
+ 
+             # Post process logits
+             logits.div_(sampling_info.temperatures)
++            # The ordinary sampler overwrites logits with probabilities below.
++            if has_mc:
++                mc_logits = logits.clone()
+ 
+             # In RL on-policy mode, we use log_softmax to compute logprobs to match the trainer.
+             logprobs_via_logsoftmax_kernel = None
+@@ -280,10 +294,56 @@ class Sampler(nn.Module):
+                 logprobs = original_logprobs
+             logprob_result = self.output_logprob_processor.compute_logprobs(
+                 logprobs,
+-                top_logprobs_nums,
++                [0 if mc else k for mc, k in zip(mc_flags, top_logprobs_nums)],
+                 token_ids_logprobs,
+                 batch_next_token_ids,
+             )
++            if has_mc:
++                probe_values, probe_ids = compute_mc_scores(
++                    mc_logits,
++                    sampling_info.probe_seeds,
++                    positions,
++                    num_samples=max(mc_counts),
++                )
++                if all(mc_flags) and len(set(mc_counts)) == 1:
++                    logprob_result.top_logprobs_val = probe_values
++                    logprob_result.top_logprobs_idx = probe_ids
++                else:
++                    if logprob_result.top_logprobs_val is None:
++                        logprob_result.top_logprobs_val = [
++                            logprobs.new_empty(0) for _ in mc_flags
++                        ]
++                        logprob_result.top_logprobs_idx = [
++                            probe_ids.new_empty(0) for _ in mc_flags
++                        ]
++                    for i, mc in enumerate(mc_flags):
++                        if mc:
++                            logprob_result.top_logprobs_val[i] = probe_values[
++                                i, : mc_counts[i]
++                            ]
++                            logprob_result.top_logprobs_idx[i] = probe_ids[
++                                i, : mc_counts[i]
++                            ]
++            # Homogeneous array batches use two bulk D2H copies, rather than
++            # one transfer per request. Mixed-width batches keep tensor rows.
++            if (
++                all(array_flags)
++                and len(set(top_logprobs_nums)) == 1
++                and isinstance(logprob_result.top_logprobs_val, list)
++            ):
++                if logprob_result.top_logprobs_val is not None:
++                    logprob_result.top_logprobs_val = torch.stack(
++                        logprob_result.top_logprobs_val
++                    )
++                    logprob_result.top_logprobs_idx = torch.stack(
++                        logprob_result.top_logprobs_idx
++                    ).to(torch.int32)
++            if isinstance(logprob_result.top_logprobs_idx, list):
++                for i, preserve_array in enumerate(array_flags):
++                    if preserve_array:
++                        logprob_result.top_logprobs_idx[i] = (
++                            logprob_result.top_logprobs_idx[i].to(torch.int32)
++                        )
+             logprob_result.write_output_to(logits_output)
+ 
+         _trace_e2e_sampler("token_sync_enter")
+diff --git a/python/sglang/srt/managers/detokenizer_manager.py b/python/sglang/srt/managers/detokenizer_manager.py
+index 01058f95a3..10519a82d5 100644
+--- a/python/sglang/srt/managers/detokenizer_manager.py
++++ b/python/sglang/srt/managers/detokenizer_manager.py
+@@ -488,7 +488,9 @@ class DetokenizerManager(MultiHttpWorkerDetokenizerMixin):
+             input_top_logprobs_idx_flat=recv_obj.input_top_logprobs_idx_flat,
+             input_top_logprobs_flat_null_prefix=recv_obj.input_top_logprobs_flat_null_prefix,
+             output_top_logprobs_val=recv_obj.output_top_logprobs_val,
++            output_top_logprobs_val_array=recv_obj.output_top_logprobs_val_array,
+             output_top_logprobs_idx=recv_obj.output_top_logprobs_idx,
++            output_top_logprobs_idx_array=recv_obj.output_top_logprobs_idx_array,
+             input_token_ids_logprobs_val=recv_obj.input_token_ids_logprobs_val,
+             input_token_ids_logprobs_idx=recv_obj.input_token_ids_logprobs_idx,
+             output_token_ids_logprobs_val=recv_obj.output_token_ids_logprobs_val,
+diff --git a/python/sglang/srt/managers/io_struct.py b/python/sglang/srt/managers/io_struct.py
+index 444f70eac6..06b33b5e1d 100644
+--- a/python/sglang/srt/managers/io_struct.py
++++ b/python/sglang/srt/managers/io_struct.py
+@@ -1513,10 +1513,12 @@ def flat_top_logprobs_layout(
+     """
+     num_rows = len(top_logprobs_val)
+     null_prefix = 0
+-    while null_prefix < num_rows and not top_logprobs_val[null_prefix]:
++    while null_prefix < num_rows and (
++        top_logprobs_val[null_prefix] is None or len(top_logprobs_val[null_prefix]) == 0
++    ):
+         null_prefix += 1
+     val_rows = top_logprobs_val[null_prefix:]
+-    k = len(val_rows[0]) if val_rows else top_logprobs_num
++    k = len(val_rows[0]) if len(val_rows) else top_logprobs_num
+     for offset, row in enumerate(val_rows):
+         if row is None or len(row) != k:
+             raise ValueError(
+@@ -1653,6 +1655,10 @@ class BatchTokenIDOutput(BaseBatchReq, kw_only=True):
+     input_top_logprobs_idx_flat: Optional[List[Optional[np.ndarray]]] = None
+     input_top_logprobs_flat_null_prefix: Optional[List[Optional[int]]] = None
+ 
++    # Binary generated-token score chunks, with duplicates preserved for MC32.
++    output_top_logprobs_val_array: Optional[List[Optional[np.ndarray]]] = None
++    output_top_logprobs_idx_array: Optional[List[Optional[np.ndarray]]] = None
++
+ 
+ class BatchStrOutput(BaseBatchReq, kw_only=True):
+     # The finish reason
+@@ -1748,6 +1754,10 @@ class BatchStrOutput(BaseBatchReq, kw_only=True):
+     input_top_logprobs_idx_flat: Optional[List[Optional[np.ndarray]]] = None
+     input_top_logprobs_flat_null_prefix: Optional[List[Optional[int]]] = None
+ 
++    # Binary generated-token score chunks, with duplicates preserved for MC32.
++    output_top_logprobs_val_array: Optional[List[Optional[np.ndarray]]] = None
++    output_top_logprobs_idx_array: Optional[List[Optional[np.ndarray]]] = None
++
+ 
+ class BatchEmbeddingOutput(BaseBatchReq, kw_only=True):
+     # The finish reason
+diff --git a/python/sglang/srt/managers/scheduler_components/batch_result_processor.py b/python/sglang/srt/managers/scheduler_components/batch_result_processor.py
+index 9ebcfbcd06..9e9ce854ec 100644
+--- a/python/sglang/srt/managers/scheduler_components/batch_result_processor.py
++++ b/python/sglang/srt/managers/scheduler_components/batch_result_processor.py
+@@ -93,6 +93,34 @@ def _get_speculative_output_stride(result: GenerationBatchResult) -> int:
+     return stride
+ 
+ 
++def convert_output_score_rows(
++    logits_output: LogitsProcessorOutput, reqs: List[Req]
++) -> None:
++    """Finish host score conversion after D2H, for both prefill and decode.
++
++    Array requests keep candidate rows as NumPy views. Legacy/speculative
++    outputs retain the existing list representation, including expanded rows.
++    """
++    if logits_output.next_token_top_logprobs_val is None:
++        return
++    preserve = [
++        getattr(req.sampling_params, "array_output_logprobs", False) for req in reqs
++    ]
++    for suffix, dtype in (("val", "float32"), ("idx", "int32")):
++        name = "next_token_top_logprobs_" + suffix
++        rows = getattr(logits_output, name)
++        if any(preserve):
++            if len(rows) != len(reqs):
++                raise ValueError("Array scores require one output row per request")
++            rows = [
++                row.cpu().numpy().astype(dtype, copy=False) if flag else row.tolist()
++                for row, flag in zip(rows, preserve)
++            ]
++        else:
++            rows = [row.tolist() for row in rows]
++        setattr(logits_output, name, rows)
++
++
+ @dataclass(kw_only=True, slots=True, frozen=True)
+ class SchedulerBatchResultProcessor:
+     is_generation: bool
+@@ -537,13 +565,8 @@ class SchedulerBatchResultProcessor:
+                 logits_output.input_token_logprobs = tuple(
+                     logits_output.input_token_logprobs.tolist()
+                 )
+-            if logits_output.next_token_top_logprobs_val:
+-                logits_output.next_token_top_logprobs_val = [
+-                    v.tolist() for v in logits_output.next_token_top_logprobs_val
+-                ]
+-                logits_output.next_token_top_logprobs_idx = [
+-                    x.tolist() for x in logits_output.next_token_top_logprobs_idx
+-                ]
++            if logits_output.next_token_top_logprobs_val is not None:
++                convert_output_score_rows(logits_output, batch.reqs)
+             if logits_output.next_token_token_ids_logprobs_val:
+                 logits_output.next_token_token_ids_logprobs_val = [
+                     v.tolist() for v in logits_output.next_token_token_ids_logprobs_val
+@@ -1113,13 +1136,8 @@ class SchedulerBatchResultProcessor:
+ 
+         if batch.return_logprob:
+             next_token_logprobs = logits_output.next_token_logprobs.tolist()
+-            if logits_output.next_token_top_logprobs_val:
+-                logits_output.next_token_top_logprobs_val = [
+-                    v.tolist() for v in logits_output.next_token_top_logprobs_val
+-                ]
+-                logits_output.next_token_top_logprobs_idx = [
+-                    x.tolist() for x in logits_output.next_token_top_logprobs_idx
+-                ]
++            if logits_output.next_token_top_logprobs_val is not None:
++                convert_output_score_rows(logits_output, batch.reqs)
+ 
+             if logits_output.next_token_token_ids_logprobs_val:
+                 logits_output.next_token_token_ids_logprobs_val = [
+diff --git a/python/sglang/srt/managers/scheduler_components/output_streamer.py b/python/sglang/srt/managers/scheduler_components/output_streamer.py
+index 9594e3c223..10e0af23d3 100644
+--- a/python/sglang/srt/managers/scheduler_components/output_streamer.py
++++ b/python/sglang/srt/managers/scheduler_components/output_streamer.py
+@@ -11,6 +11,7 @@ from typing import (
+     Optional,
+ )
+ 
++import numpy as np
+ import torch
+ import zmq
+ 
+@@ -375,6 +376,8 @@ class _GenerationStreamAccumulator:
+     input_top_logprobs_idx_flat: Optional[list] = None
+     input_top_logprobs_flat_null_prefix: Optional[list] = None
+     has_input_top_logprobs_flat: bool = False
++    output_top_logprobs_val_array: list = field(default_factory=list)
++    output_top_logprobs_idx_array: list = field(default_factory=list)
+     output_top_logprobs_val: Optional[list] = None
+     output_top_logprobs_idx: Optional[list] = None
+     input_token_ids_logprobs_val: Optional[list] = None
+@@ -587,6 +590,9 @@ class _GenerationStreamAccumulator:
+                 self.input_token_ids_logprobs_idx.append([])
+ 
+             if req.return_logprob:
++                preserve_arrays = getattr(
++                    req.sampling_params, "array_output_logprobs", False
++                )
+                 logprob_end = (
+                     len(output_ids_) if req.is_retracted else max(len(output_ids_), 1)
+                 )
+@@ -600,15 +606,27 @@ class _GenerationStreamAccumulator:
+                         send_output_token_logprobs_offset:logprob_end
+                     ]
+                 )
+-                self.output_top_logprobs_val.append(
+-                    req.logprob.output_top_logprobs_val[
+-                        send_output_token_logprobs_offset:logprob_end
+-                    ]
++                rows = req.logprob.output_top_logprobs_val[
++                    send_output_token_logprobs_offset:logprob_end
++                ]
++                self.output_top_logprobs_val.append([] if preserve_arrays else rows)
++                self.output_top_logprobs_val_array.append(
++                    np.asarray(rows, dtype=np.float32).reshape(
++                        -1, req.logprob.top_logprobs_num
++                    )
++                    if preserve_arrays
++                    else None
+                 )
+-                self.output_top_logprobs_idx.append(
+-                    req.logprob.output_top_logprobs_idx[
+-                        send_output_token_logprobs_offset:logprob_end
+-                    ]
++                rows = req.logprob.output_top_logprobs_idx[
++                    send_output_token_logprobs_offset:logprob_end
++                ]
++                self.output_top_logprobs_idx.append([] if preserve_arrays else rows)
++                self.output_top_logprobs_idx_array.append(
++                    np.asarray(rows, dtype=np.int32).reshape(
++                        -1, req.logprob.top_logprobs_num
++                    )
++                    if preserve_arrays
++                    else None
+                 )
+                 self.output_token_ids_logprobs_val.append(
+                     req.logprob.output_token_ids_logprobs_val[
+@@ -625,7 +643,9 @@ class _GenerationStreamAccumulator:
+                 self.output_token_logprobs_val.append([])
+                 self.output_token_logprobs_idx.append([])
+                 self.output_top_logprobs_val.append([])
++                self.output_top_logprobs_val_array.append(None)
+                 self.output_top_logprobs_idx.append([])
++                self.output_top_logprobs_idx_array.append(None)
+                 self.output_token_ids_logprobs_val.append([])
+                 self.output_token_ids_logprobs_idx.append([])
+ 
+@@ -744,7 +764,9 @@ class _GenerationStreamAccumulator:
+                 else None
+             ),
+             output_top_logprobs_val=self.output_top_logprobs_val,
++            output_top_logprobs_val_array=self.output_top_logprobs_val_array or None,
+             output_top_logprobs_idx=self.output_top_logprobs_idx,
++            output_top_logprobs_idx_array=self.output_top_logprobs_idx_array or None,
+             input_token_ids_logprobs_val=self.input_token_ids_logprobs_val,
+             input_token_ids_logprobs_idx=self.input_token_ids_logprobs_idx,
+             output_token_ids_logprobs_val=self.output_token_ids_logprobs_val,
+diff --git a/python/sglang/srt/managers/tokenizer_manager.py b/python/sglang/srt/managers/tokenizer_manager.py
+index 788b2e515a..d4c375d543 100644
+--- a/python/sglang/srt/managers/tokenizer_manager.py
++++ b/python/sglang/srt/managers/tokenizer_manager.py
+@@ -1505,6 +1505,33 @@ class TokenizerManager(TokenizerControlMixin, TokenizerManagerScoreMixin):
+         sampling_params = self.sampling_params_class(**sampling_kwargs)
+         sampling_params.normalize(self.tokenizer)
+         sampling_params.verify(self.model_config.vocab_size)
++        if sampling_params.array_output_logprobs:
++            if not isinstance(obj, GenerateReqInput) or not (
++                obj.return_logprob
++                and obj.return_flat_raw_output_top_logprobs
++                and obj.return_flat_raw_top_logprobs_b64
++                and not obj.stream
++                and obj.logprob_start_len == -1
++                and obj.top_logprobs_num > 0
++                and sampling_params.max_new_tokens > 0
++            ):
++                raise ValueError(
++                    "Array scores require nonstreaming generated-only flat base64 logprobs"
++                )
++            if (
++                self.server_args.speculative_algorithm
++                or sampling_params.beam_width is not None
++            ):
++                raise ValueError(
++                    "Array scores do not yet support speculative decoding or beam search"
++                )
++            if (
++                sampling_params.score_centering_samples
++                and obj.top_logprobs_num != sampling_params.score_centering_samples
++            ):
++                raise ValueError(
++                    "MC probes require top_logprobs_num=score_centering_samples (payload width, not top-k extraction)"
++                )
+ 
+         # Build return object
+         if isinstance(obj, GenerateReqInput):
+@@ -2889,6 +2916,10 @@ class TokenizerManager(TokenizerControlMixin, TokenizerManagerScoreMixin):
+                         )
+                     )
+                 meta_info["input_top_logprobs"] = state.input_top_logprobs
++            if count := state.obj.sampling_params.get("score_centering_samples", 0):
++                meta_info["output_score_mode"] = f"mc{count}"
++            elif state.obj.sampling_params.get("array_output_logprobs", False):
++                meta_info["output_score_mode"] = "topk"
+             use_flat_output = state.obj.return_flat_raw_output_top_logprobs
+             # Built once on the finished response; streaming is rejected and
+             # only that response reaches a non-streaming client.
+@@ -3012,6 +3043,16 @@ class TokenizerManager(TokenizerControlMixin, TokenizerManagerScoreMixin):
+                     recv_obj.input_top_logprobs_idx_flat[recv_obj_index],
+                     recv_obj.input_top_logprobs_flat_null_prefix[recv_obj_index],
+                 )
++            if (
++                recv_obj.output_top_logprobs_val_array is not None
++                and recv_obj.output_top_logprobs_val_array[recv_obj_index] is not None
++            ):
++                state.output_top_logprobs_val.extend(
++                    recv_obj.output_top_logprobs_val_array[recv_obj_index]
++                )
++                state.output_top_logprobs_idx.extend(
++                    recv_obj.output_top_logprobs_idx_array[recv_obj_index]
++                )
+             if recv_obj.output_top_logprobs_val is not None:
+                 state.output_top_logprobs_val.extend(
+                     recv_obj.output_top_logprobs_val[recv_obj_index]
+diff --git a/python/sglang/srt/managers/utils.py b/python/sglang/srt/managers/utils.py
+index 7a6a49f0f7..26b0b41783 100644
+--- a/python/sglang/srt/managers/utils.py
++++ b/python/sglang/srt/managers/utils.py
+@@ -168,15 +168,19 @@ class GenerationBatchResult:
+                     self.logits_output.input_token_logprobs
+                 )
+             if self.logits_output.next_token_top_logprobs_val is not None:
+-                self.logits_output.next_token_top_logprobs_val = [
+-                    _async_d2h(v) if torch.is_tensor(v) else v
+-                    for v in self.logits_output.next_token_top_logprobs_val
+-                ]
++                scores = self.logits_output.next_token_top_logprobs_val
++                self.logits_output.next_token_top_logprobs_val = (
++                    _async_d2h(scores)
++                    if torch.is_tensor(scores)
++                    else [_async_d2h(v) if torch.is_tensor(v) else v for v in scores]
++                )
+             if self.logits_output.next_token_top_logprobs_idx is not None:
+-                self.logits_output.next_token_top_logprobs_idx = [
+-                    _async_d2h(x) if torch.is_tensor(x) else x
+-                    for x in self.logits_output.next_token_top_logprobs_idx
+-                ]
++                scores = self.logits_output.next_token_top_logprobs_idx
++                self.logits_output.next_token_top_logprobs_idx = (
++                    _async_d2h(scores)
++                    if torch.is_tensor(scores)
++                    else [_async_d2h(v) if torch.is_tensor(v) else v for v in scores]
++                )
+             if self.logits_output.next_token_token_ids_logprobs_val is not None:
+                 self.logits_output.next_token_token_ids_logprobs_val = [
+                     _async_d2h(v) if torch.is_tensor(v) else v
+diff --git a/python/sglang/srt/sampling/sampling_batch_info.py b/python/sglang/srt/sampling/sampling_batch_info.py
+index 2472f76a81..167bebefaa 100644
+--- a/python/sglang/srt/sampling/sampling_batch_info.py
++++ b/python/sglang/srt/sampling/sampling_batch_info.py
+@@ -92,6 +92,10 @@ class SamplingBatchInfo:
+     # Used for deterministic sampling
+     sampling_seed: Optional[torch.Tensor] = None
+ 
++    mc_sample_counts: Optional[List[int]] = None
++    array_logprob_flags: Optional[List[bool]] = None
++    probe_seeds: Optional[torch.Tensor] = None
++
+     # CPU request flags and their derived device indices. The flags make batch
+     # filtering cheap; the indices keep sampler work limited to opted-in rows.
+     return_sampling_masks: Optional[List[bool]] = None
+@@ -250,6 +254,13 @@ class SamplingBatchInfo:
+             top_ks=top_ks,
+             min_ps=min_ps,
+             sampling_seed=sampling_seed,
++            mc_sample_counts=[r.sampling_params.score_centering_samples for r in reqs],
++            array_logprob_flags=[r.sampling_params.array_output_logprobs for r in reqs],
++            probe_seeds=torch.tensor(
++                [r.sampling_params.sampling_seed or 0 for r in reqs],
++                dtype=torch.int64,
++                pin_memory=_pin,
++            ).to(device, non_blocking=True),
+             is_all_greedy=all(r.sampling_params.top_k <= 1 for r in reqs),
+             is_any_greedy=any(r.sampling_params.top_k <= 1 for r in reqs),
+             need_top_p_sampling=any(r.sampling_params.top_p != 1.0 for r in reqs),
+@@ -424,11 +435,16 @@ class SamplingBatchInfo:
+             "top_ks",
+             "min_ps",
+             "sampling_seed",
++            "probe_seeds",
+         ]:
+             value = getattr(self, item, None)
+             if value is not None:
+                 setattr(self, item, value[keep_indices_device])
+ 
++        for name in ("mc_sample_counts", "array_logprob_flags"):
++            flags = getattr(self, name)
++            if flags is not None:
++                setattr(self, name, [flags[i] for i in keep_indices])
+         if self.logit_bias is not None:
+             self.logit_bias = self.logit_bias[keep_indices_device]
+         if self.return_sampling_masks is not None:
+@@ -538,6 +554,14 @@ class SamplingBatchInfo:
+                 )
+             )
+ 
++        for name in ("mc_sample_counts", "array_logprob_flags"):
++            setattr(
++                self,
++                name,
++                (getattr(self, name) or [False] * len(self))
++                + (getattr(other, name) or [False] * len(other)),
++            )
++
+         # Note: because the __len()__ operator is defined on the temperatures tensor,
+         # please make sure any merge operation with len(self) or len(other) is done before
+         # the merge operation of the temperatures tensor below.
+@@ -547,6 +571,7 @@ class SamplingBatchInfo:
+             "top_ks",
+             "min_ps",
+             "sampling_seed",
++            "probe_seeds",
+         ]:
+             self_val = getattr(self, item, None)
+             other_val = getattr(other, item, None)
+diff --git a/python/sglang/srt/sampling/sampling_params.py b/python/sglang/srt/sampling/sampling_params.py
+index 29ba3075f3..5af50ded48 100644
+--- a/python/sglang/srt/sampling/sampling_params.py
++++ b/python/sglang/srt/sampling/sampling_params.py
+@@ -161,6 +161,10 @@ class SamplingParams(msgspec.Struct, kw_only=True, array_like=True):
+     is_normalized: bool = False  # set by normalize()
+     ebnf_full_assistant: bool = False
+ 
++    # Generated-token auxiliary scores. MC draws preserve duplicates.
++    score_centering_samples: int = 0
++    array_output_logprobs: bool = False
++
+     def __post_init__(self):
+         # For non-optional params, treat None as "use default" so that callers
+         # (e.g. /generate) can pass null without crashing verify().
+@@ -222,6 +226,25 @@ class SamplingParams(msgspec.Struct, kw_only=True, array_like=True):
+             self.top_k = TOP_K_ALL  # whole vocabulary
+ 
+     def verify(self, vocab_size):
++        if self.score_centering_samples not in (0, 32, 64, 128):
++            raise ValueError("score_centering_samples must be 0, 32, 64, or 128")
++        if self.score_centering_samples:
++            if not self.array_output_logprobs:
++                raise ValueError("MC probes require array_output_logprobs=True")
++            if (
++                self.top_k != TOP_K_ALL
++                or self.top_p != 1.0
++                or self.min_p != 0.0
++                or self.temperature <= 0
++                or self.beam_width is not None
++            ):
++                raise ValueError(
++                    "MC probes require positive temperature and untruncated categorical sampling"
++                )
++            if self.sampling_seed is None:
++                raise ValueError(
++                    "MC probes require an explicit sampling_seed for auxiliary draws"
++                )
+         if self.beam_width is not None and self.beam_width < 1:
+             raise ValueError(f"beam_width must be at least 1, got {self.beam_width}.")
+         if not math.isfinite(self.temperature) or self.temperature < 0.0:
+diff --git a/rust/sglang-server/src/message/sampling.rs b/rust/sglang-server/src/message/sampling.rs
+index 2491004d3e..f569673a7d 100644
+--- a/rust/sglang-server/src/message/sampling.rs
++++ b/rust/sglang-server/src/message/sampling.rs
+@@ -241,6 +241,11 @@ pub struct SamplingParams {
+     /// strip that wrapper from its own grammar, so it is a pipeline output only.
+     #[serde(skip_deserializing)]
+     pub ebnf_full_assistant: bool,
++    /// Python-only generated-token auxiliary scores; keep positional IPC aligned.
++    #[serde(default)]
++    pub score_centering_samples: i64,
++    #[serde(default)]
++    pub array_output_logprobs: bool,
+     /// API fields present in the request object. Serde defaults erase this
+     /// distinction, but preferred sampling parameters must not overwrite an
+     /// explicit request value, including an explicit default or null.
+@@ -387,6 +392,8 @@ impl Default for SamplingParams {
+             stop_regex_max_len: 0,
+             is_normalized: false,
+             ebnf_full_assistant: false,
++            score_centering_samples: 0,
++            array_output_logprobs: false,
+             explicit_fields: BTreeSet::new(),
+         }
+     }
+@@ -512,6 +519,11 @@ impl SamplingParams {
+     /// Python `verify(vocab_size)` — the same ranges, messages and mutual
+     /// exclusions, plus the rust-server `n == 1` restriction.
+     fn verify(&self, vocab_size: u64) -> Result<(), Error> {
++        if self.score_centering_samples != 0 || self.array_output_logprobs {
++            return Err(bad(
++                "array output scores and MC32 currently require the Python server".to_owned(),
++            ));
++        }
+         if let Some(beam_width) = self.beam_width
+             && beam_width < 1
+         {
+@@ -839,6 +851,8 @@ mod tests {
+         "stop_regex_max_len",
+         "is_normalized",
+         "ebnf_full_assistant",
++        "score_centering_samples",
++        "array_output_logprobs",
+     ];
+ 
+     /// Every field reaches the wire, at the position Python expects.
+diff --git a/test/registered/sampling/test_mc32.py b/test/registered/sampling/test_mc32.py
+new file mode 100644
+index 0000000000..7c3d335031
+--- /dev/null
++++ b/test/registered/sampling/test_mc32.py
+@@ -0,0 +1,301 @@
++"""MC32/64/128 correctness and typed-array transport; GPU tests require CUDA."""
++
++from types import SimpleNamespace
++from typing import List, Optional
++
++import msgspec
++import numpy as np
++import pytest
++import torch
++
++from sglang.srt.layers.mc_logprobs import compute_mc_scores
++from sglang.srt.managers.io_struct import build_flat_top_logprobs_arrays
++from sglang.srt.sampling.sampling_batch_info import SamplingBatchInfo
++from sglang.srt.sampling.sampling_params import SamplingParams
++from sglang.srt.utils.msgpack_utils import dec_hook, enc_hook, ext_hook
++
++
++@pytest.mark.parametrize(
++    "kwargs",
++    [
++        dict(score_centering_samples=31),
++        dict(score_centering_samples=32),
++        dict(
++            score_centering_samples=32,
++            array_output_logprobs=True,
++            sampling_seed=17,
++            top_p=0.9,
++        ),
++        dict(
++            score_centering_samples=32,
++            array_output_logprobs=True,
++            sampling_seed=17,
++            temperature=0,
++        ),
++        dict(score_centering_samples=32, array_output_logprobs=True),
++    ],
++)
++def test_invalid_parameters(kwargs):
++    with pytest.raises(ValueError):
++        SamplingParams(**kwargs).verify(128)
++
++
++@pytest.mark.parametrize("count", [32, 64, 128])
++def test_array_transport_preserves_duplicates(count):
++    vals = np.full((7, count), -2.5, dtype=np.float32)
++    ids = np.full((7, count), 13, dtype=np.int32)
++    for value, typ in (
++        (vals, Optional[List[Optional[np.ndarray]]]),
++        (ids, Optional[List[Optional[np.ndarray]]]),
++    ):
++        # The exact annotated fields used on both scheduler/detokenizer hops.
++        decoder = msgspec.msgpack.Decoder(
++            type=typ, dec_hook=dec_hook, ext_hook=ext_hook
++        )
++        packet = msgspec.msgpack.encode([value], enc_hook=enc_hook)
++        decoded = decoder.decode(packet)[0]
++        assert isinstance(decoded, np.ndarray) and decoded.dtype == value.dtype
++        np.testing.assert_array_equal(decoded, value)
++        assert len(packet) < value.nbytes + 100
++    v, i, prefix = build_flat_top_logprobs_arrays(list(vals), list(ids), count)
++    assert prefix == 0 and i.dtype == np.int32 and v.dtype == np.float32
++    np.testing.assert_array_equal(i, ids)
++
++
++def test_probe_batch_filter_merge():
++    def batch(flags, seeds):
++        n = len(flags)
++        return SamplingBatchInfo(
++            temperatures=torch.ones(n, 1),
++            top_ps=torch.ones(n),
++            top_ks=torch.full((n,), 1 << 30),
++            min_ps=torch.zeros(n),
++            is_all_greedy=False,
++            is_any_greedy=False,
++            need_top_p_sampling=False,
++            need_top_k_sampling=False,
++            need_min_p_sampling=False,
++            vocab_size=128,
++            mc_sample_counts=flags,
++            array_logprob_flags=[bool(count) for count in flags],
++            probe_seeds=torch.tensor(seeds),
++            device="cpu",
++            penalizer_orchestrator=SimpleNamespace(
++                filter=lambda _: None, merge=lambda _: None
++            ),
++        )
++
++    a = batch([32, 0, 128], [5, 6, 7])
++    a.filter_batch([2, 0], torch.tensor([2, 0]))
++    assert a.probe_seeds.tolist() == [7, 5] and a.mc_sample_counts == [128, 32]
++    a.merge_batch(batch([64], [9]))
++    assert a.probe_seeds.tolist() == [7, 5, 9] and a.mc_sample_counts == [128, 32, 64]
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
++@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
++@pytest.mark.parametrize("vocab", [11, 4097, 100352])
++@pytest.mark.parametrize("count", [32, 64, 128])
++def test_gpu_exact_logprobs_and_rng(dtype, vocab, count):
++    torch.manual_seed(18)
++    x = torch.randn(5, vocab, device="cuda", dtype=dtype)
++    # Exercise completely masked tiles and a last, partial tile.
++    x[0, :] = -torch.inf
++    x[0, -1] = 0
++    seeds = torch.arange(5, device="cuda", dtype=torch.int64) + 19
++    positions = torch.arange(5, device="cuda", dtype=torch.int64) + 101
++    rng = torch.cuda.get_rng_state().clone()
++    values, ids = compute_mc_scores(x, seeds, positions, num_samples=count)
++    assert torch.equal(rng, torch.cuda.get_rng_state())
++    assert ids.shape == (5, count)
++    assert ids.dtype == torch.int32 and values.dtype == torch.float32
++    torch.testing.assert_close(
++        values,
++        torch.log_softmax(x.float(), dim=-1).gather(1, ids.long()),
++        atol=3e-5,
++        rtol=1e-6,
++    )
++    assert (ids[0] == vocab - 1).all() and (values[0] == 0).all()
++    v2, i2 = compute_mc_scores(x, seeds, positions, num_samples=count)
++    assert torch.equal(ids, i2) and torch.equal(values, v2)
++    _, changed = compute_mc_scores(x, seeds, positions + 1, num_samples=count)
++    assert not torch.equal(ids[1:], changed[1:])
++    # Request reordering must not change draws.
++    order = torch.tensor([3, 0, 4, 1, 2], device="cuda")
++    v3, i3 = compute_mc_scores(
++        x[order], seeds[order], positions[order], num_samples=count
++    )
++    assert torch.equal(ids[order], i3)
++    # Increasing the requested count preserves earlier draws.
++    _, prefix = compute_mc_scores(x, seeds, positions, num_samples=32)
++    assert torch.equal(ids[:, :32], prefix)
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
++@pytest.mark.parametrize("count", [32, 64, 128])
++def test_gpu_categorical_frequencies_and_independence(count):
++    n = 8192
++    p = torch.tensor([0.1, 0.2, 0.3, 0.4], device="cuda")
++    x = p.log().expand(n, -1).contiguous()
++    _, ids = compute_mc_scores(
++        x,
++        torch.arange(n, device="cuda", dtype=torch.int64),
++        torch.full((n,), 7, device="cuda"),
++        num_samples=count,
++    )
++    freq = torch.bincount(ids.flatten().long(), minlength=4).float() / (n * count)
++    torch.testing.assert_close(freq, p, atol=0.004, rtol=0)
++    # Independent replacement draws repeat with probability sum(p**2).
++    repeat = (ids[:, :-1] == ids[:, 1:]).float().mean()
++    assert abs(repeat.item() - (p * p).sum().item()) < 0.006
++
++
++@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA required")
++@pytest.mark.parametrize("counts", [(32, 32), (64, 128), (128, 64)])
++def test_gpu_sampler_keeps_response_rng_and_mixed_rows(counts):
++    # Exercise the real forward and PyTorch response sampler, without model/TP initialization.
++    from sglang.srt.layers.logits_processor import LogitsProcessorOutput
++    from sglang.srt.layers.logprob_processor import OutputLogprobProcessor
++    from sglang.srt.layers.sampler import Sampler
++
++    sampler = Sampler.__new__(Sampler)
++    torch.nn.Module.__init__(sampler)
++    sampler.enable_deterministic = False
++    sampler.use_log_softmax_logprob = False
++    sampler.use_ascend_backend = False
++    sampler.output_logprob_processor = OutputLogprobProcessor()
++    n, vocab = 4, 8193
++    x = torch.randn(n, vocab, device="cuda")
++    info = SamplingBatchInfo(
++        temperatures=torch.full((n, 1), 0.7, device="cuda"),
++        top_ps=torch.ones(n, device="cuda"),
++        top_ks=torch.full((n,), 1 << 30, device="cuda"),
++        min_ps=torch.zeros(n, device="cuda"),
++        is_all_greedy=False,
++        is_any_greedy=False,
++        need_top_p_sampling=False,
++        need_top_k_sampling=False,
++        need_min_p_sampling=False,
++        vocab_size=vocab,
++        probe_seeds=torch.arange(n, device="cuda", dtype=torch.int64),
++        mc_sample_counts=[0] * n,
++        array_logprob_flags=[False] * n,
++    )
++    positions = torch.arange(n, device="cuda", dtype=torch.int64) + 100
++    torch.manual_seed(23)
++    state = torch.cuda.get_rng_state()
++    original = LogitsProcessorOutput(next_token_logits=x.clone())
++    tokens = sampler(original, info, True, [0] * n, [None] * n, positions)
++    after = torch.cuda.get_rng_state()
++    torch.cuda.set_rng_state(state)
++    info.mc_sample_counts = [counts[0], 0, counts[1], 0]
++    info.array_logprob_flags = [True, True, True, False]
++    output = LogitsProcessorOutput(next_token_logits=x.clone())
++    actual = sampler(
++        output, info, True, [counts[0], 64, counts[1], 0], [None] * n, positions
++    )
++    assert torch.equal(tokens, actual)
++    assert torch.equal(after, torch.cuda.get_rng_state())
++    reference = torch.log_softmax(x / 0.7, dim=-1)
++    for row in (0, 2):
++        ids = output.next_token_top_logprobs_idx[row]
++        assert ids.numel() == info.mc_sample_counts[row]
++        torch.testing.assert_close(
++            output.next_token_top_logprobs_val[row],
++            reference[row, ids.long()],
++            atol=3e-5,
++            rtol=1e-6,
++        )
++    torch.testing.assert_close(
++        output.next_token_top_logprobs_val[1],
++        reference[1].topk(64).values,
++        atol=3e-5,
++        rtol=1e-6,
++    )
++
++    # All-MC batches may still contain different widths; each row keeps its
++    # own shape and draws when the scheduler combines requests.
++    info.mc_sample_counts = [32, 64, 128, 64]
++    info.array_logprob_flags = [True] * n
++    torch.cuda.set_rng_state(state)
++    all_mc = LogitsProcessorOutput(next_token_logits=x.clone())
++    actual = sampler(all_mc, info, True, info.mc_sample_counts, [None] * n, positions)
++    assert torch.equal(tokens, actual)
++    assert torch.equal(after, torch.cuda.get_rng_state())
++    for row, count in enumerate(info.mc_sample_counts):
++        values, ids = compute_mc_scores(
++            x[row : row + 1] / 0.7,
++            info.probe_seeds[row : row + 1],
++            positions[row : row + 1],
++            num_samples=count,
++        )
++        assert torch.equal(all_mc.next_token_top_logprobs_idx[row], ids[0])
++        torch.testing.assert_close(all_mc.next_token_top_logprobs_val[row], values[0])
++
++
++@pytest.mark.parametrize("phase", ["prefill", "decode"])
++@pytest.mark.parametrize("count", [32, 64, 128])
++def test_candidate_arrays_never_become_python_scalars(monkeypatch, phase, count):
++    from sglang.srt.layers.logits_processor import LogitsProcessorOutput
++    from sglang.srt.managers.scheduler_components.batch_result_processor import (
++        SchedulerBatchResultProcessor,
++    )
++
++    original = torch.Tensor.tolist
++
++    def forbid_candidate_lists(tensor):
++        assert tensor.numel() < 32, (
++            "candidate tensors must never become Python scalar lists"
++        )
++        return original(tensor)
++
++    monkeypatch.setattr(torch.Tensor, "tolist", forbid_candidate_lists)
++    output = LogitsProcessorOutput(
++        next_token_logits=None,
++        next_token_logprobs=torch.tensor([-0.1, -0.2]),
++        next_token_top_logprobs_val=torch.full((2, count), -1.0, dtype=torch.float32),
++        next_token_top_logprobs_idx=torch.ones((2, count), dtype=torch.int32),
++    )
++    batch = SimpleNamespace(
++        return_logprob=True,
++        reqs=[
++            SimpleNamespace(sampling_params=SamplingParams(array_output_logprobs=True))
++            for _ in range(2)
++        ],
++        spec_algorithm=SimpleNamespace(is_none=lambda: True),
++    )
++    if phase == "prefill":
++        SchedulerBatchResultProcessor.move_logprobs_to_cpu(
++            None, batch=batch, logits_output=output
++        )
++    else:
++        SchedulerBatchResultProcessor._normalize_decode_outputs(
++            None,
++            batch=batch,
++            result=None,
++            logits_output=output,
++            next_token_ids=torch.tensor([1, 2]),
++        )
++    assert all(
++        isinstance(row, np.ndarray) and row.dtype == np.float32
++        for row in output.next_token_top_logprobs_val
++    )
++    assert all(
++        isinstance(row, np.ndarray) and row.dtype == np.int32
++        for row in output.next_token_top_logprobs_idx
++    )
++
++
++@pytest.mark.parametrize("count", [32, 64, 128])
++def test_valid_probe_counts(count):
++    SamplingParams(
++        score_centering_samples=count, array_output_logprobs=True, sampling_seed=17
++    ).verify(128)
++
++
++@pytest.mark.parametrize("count", [0, 31, 33, 129])
++def test_invalid_kernel_probe_counts(count):
++    with pytest.raises(ValueError, match="num_samples"):
++        compute_mc_scores(
++            torch.empty(1, 10), torch.tensor([1]), torch.tensor([1]), num_samples=count
++        )
+diff --git a/test/registered/unit/managers/test_flat_raw_top_logprobs.py b/test/registered/unit/managers/test_flat_raw_top_logprobs.py
+index 96a35224cb..7a7ad0a1db 100644
+--- a/test/registered/unit/managers/test_flat_raw_top_logprobs.py
++++ b/test/registered/unit/managers/test_flat_raw_top_logprobs.py
+@@ -698,6 +698,7 @@ class TestTokenizerManagerLogprobs(CustomTestCase):
+             output_token_logprobs_val=None,
+             input_top_logprobs_val=None,
+             input_top_logprobs_val_flat=None,
++            output_top_logprobs_val_array=None,
+             output_top_logprobs_val=None,
+             input_token_ids_logprobs_val=None,
+             output_token_ids_logprobs_val=None,

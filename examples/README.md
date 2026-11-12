@@ -18,6 +18,7 @@ End-to-end training workflows — the place to start.
 - **[swe-agent-harbor-docker](./swe-agent-harbor-docker)**: Trains coding and terminal agents with Harbor-managed local Docker sandboxes and verifier rewards.
 - **[tmax](./tmax)**: Terminal-RL on the TMax tasks with per-task Podman sandboxes: sync and fully-async GRPO, plus on-policy distillation.
   - **[beaker](./tmax/beaker)**: Running the TMax experiments on AI2's Beaker: submissions, resume, images, mirrors, monitoring and failure triage.
+  - **[inference](./tmax/configs/inference)**: TMax BF16 and NVFP4 serving configs and generated-token SCT/SCMC array requests.
 
 ## [Infra Features](./infra_features)
 

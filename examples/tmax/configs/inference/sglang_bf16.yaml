@@ -1,0 +1,11 @@
+# Native SGLang --config file; not a run_tmax_qwen3_5.py / Beaker config.
+# Prepare a local copy of hamishivi/Qwen3.5-4B with the TMax chat template.
+model-path: /weka/gfaria/tmax-4b-miles/models/Qwen3.5-4B-tmax-template
+dtype: bfloat16
+tp-size: 1
+context-length: 67584
+mem-fraction-static: 0.8
+reasoning-parser: qwen3
+tool-call-parser: qwen3_coder
+host: 127.0.0.1
+port: 30000

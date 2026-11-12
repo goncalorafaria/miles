@@ -1,0 +1,120 @@
+{
+  "baseline": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false
+  },
+  "sct32": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17,
+      "array_output_logprobs": true
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false,
+    "top_logprobs_num": 32,
+    "return_flat_raw_output_top_logprobs": true,
+    "return_flat_raw_top_logprobs_b64": true
+  },
+  "sct64": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17,
+      "array_output_logprobs": true
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false,
+    "top_logprobs_num": 64,
+    "return_flat_raw_output_top_logprobs": true,
+    "return_flat_raw_top_logprobs_b64": true
+  },
+  "sct128": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17,
+      "array_output_logprobs": true
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false,
+    "top_logprobs_num": 128,
+    "return_flat_raw_output_top_logprobs": true,
+    "return_flat_raw_top_logprobs_b64": true
+  },
+  "scmc32": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17,
+      "array_output_logprobs": true,
+      "score_centering_samples": 32
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false,
+    "top_logprobs_num": 32,
+    "return_flat_raw_output_top_logprobs": true,
+    "return_flat_raw_top_logprobs_b64": true
+  },
+  "scmc64": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17,
+      "array_output_logprobs": true,
+      "score_centering_samples": 64
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false,
+    "top_logprobs_num": 64,
+    "return_flat_raw_output_top_logprobs": true,
+    "return_flat_raw_top_logprobs_b64": true
+  },
+  "scmc128": {
+    "text": "Explain why the sky is blue in a short paragraph.",
+    "sampling_params": {
+      "temperature": 1.0,
+      "top_p": 1.0,
+      "top_k": -1,
+      "max_new_tokens": 256,
+      "sampling_seed": 17,
+      "array_output_logprobs": true,
+      "score_centering_samples": 128
+    },
+    "return_logprob": true,
+    "logprob_start_len": -1,
+    "stream": false,
+    "top_logprobs_num": 128,
+    "return_flat_raw_output_top_logprobs": true,
+    "return_flat_raw_top_logprobs_b64": true
+  }
+}
