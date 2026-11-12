@@ -1,0 +1,56 @@
+# Requires a newly built image containing docker/patch/sglang_score_logprobs.patch.
+# Replace beaker.image with that immutable image ID before submitting.
+exp_name: tmax_4b_prod_dppo_tv_scmc32
+model_name: Qwen3.5-4B-tmax-template
+sandbox_backend: gateway
+num_nodes: 2
+num_gpus_per_node: 8
+async_rollout_gpus: 8
+rollout_batch_size: 8
+n_samples_per_prompt: 32
+num_rollout: 500
+max_seq_len: 67584
+rollout_max_response_len: 16384
+max_steps: 64
+filter_zero_std: true
+max_weight_staleness: 4
+async_max_concurrent_samples: 512
+async_data_buffer_capacity_factor: 4
+tensor_model_parallel_size: 1
+context_parallel_size: 1
+max_tokens_per_gpu: 67584
+optimizer_cpu_offload: false
+sglang_mem_fraction_static: 0.8
+sandbox_start_concurrency: 64
+start_failure: drop
+save_interval: 5
+hf_snapshot_every: 20
+extra_args: --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
+  1800 --loss-type score_centering --score-centering-estimator mc --rollout-score-array
+  --rollout-top-logprobs-num 32 --score-centering-is none
+model_dir: /weka/nora-default/shashankg/miles_tmax_v2/models
+data_dir: /weka/nora-default/shashankg/miles_tmax_v2/datasets
+output_dir: /weka/oe-adapt-default/gfaria/tmax-score-logprobs/output
+trace_dir: /weka/oe-adapt-default/gfaria/tmax-score-logprobs/traces
+dump_training_data: true
+wandb_project: oe-general-agents
+wandb_entity: ai2-llm
+beaker:
+  cluster: ai2/holmes
+  workspace: ai2/oe-agents-holmes
+  budget: ai2/oe-omai
+  priority: normal
+  preemptible: true
+  min_runtime: 1h
+  retries: 0
+  nodes: 2
+  gpus: 8
+  shared_memory: 512GiB
+  image: beaker:goncalof/tmax-miles-score-logprobs
+  gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
+  gateway_min_replicas: 64
+  keep_last_n_checkpoints: 3
+  env:
+    NCCL_DEBUG: WARN
+    SGLANG_RETURN_ORIGINAL_LOGPROB: '0'
+policy_loss: dppo_tv

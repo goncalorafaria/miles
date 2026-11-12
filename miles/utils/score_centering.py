@@ -10,6 +10,8 @@ from miles.utils.rollout_topk_logprobs import validate_rollout_topk_logprobs_sam
 def validate_score_centering_args(args: Namespace) -> None:
     if getattr(args, "loss_type", None) != "score_centering":
         return
+    if getattr(args, "policy_loss_type", None) == "dppo_tv" and args.score_centering_is != "none":
+        raise ValueError("DPPO-TV supplies its own ratio and trust-region weights; do not add score-centering TIS/MIS")
     if args.rollout_top_logprobs_num <= 0:
         raise ValueError("Score centering requires a positive --rollout-top-logprobs-num")
     if not math.isfinite(args.score_centering_tis_clip) or args.score_centering_tis_clip <= 0:

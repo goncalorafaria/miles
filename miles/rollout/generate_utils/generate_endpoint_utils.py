@@ -128,6 +128,8 @@ async def update_sample_from_response(
             output["meta_info"],
             args.rollout_top_logprobs_num,
             sampling_logprobs_mode=payload.get("sampling_logprobs_mode", "selected"),
+            estimator=getattr(args, "score_centering_estimator", "topk"),
+            array_output=getattr(args, "rollout_score_array", False),
         )
 
     if update_loss_mask:

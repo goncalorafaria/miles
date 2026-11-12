@@ -138,7 +138,9 @@ def convert_samples_to_train_data(
                     )
         if args.ci_test:
             for sample in samples:
-                validate_rollout_topk_logprobs_sample(sample, k)
+                validate_rollout_topk_logprobs_sample(
+                    sample, k, estimator=getattr(args, "score_centering_estimator", "topk")
+                )
         train_data["rollout_topk_token_ids"] = [sample.rollout_topk_token_ids for sample in samples]
         train_data["rollout_topk_log_probs"] = [sample.rollout_topk_log_probs for sample in samples]
 

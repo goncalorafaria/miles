@@ -277,6 +277,29 @@ def compute_policy_loss(
     return pg_losses, clipfrac
 
 
+@torch.no_grad()
+def dppo_tv_mask(log_probs, behavior_log_probs, advantages, ratio, threshold):
+    """Shared trust-region decision for sampled actions and score-centering candidates."""
+    mu = behavior_log_probs.clamp(min=-30.0, max=0.0).exp()
+    pi = log_probs.clamp(min=-30.0, max=0.0).exp()
+    outside = (mu - pi).abs() > threshold
+    return outside & (((advantages > 0) & (ratio > 1.0)) | ((advantages < 0) & (ratio < 1.0)))
+
+
+@torch.no_grad()
+def dppo_tv_score_weight(log_probs, behavior_log_probs, advantages, threshold):
+    """Derivative coefficient of the native DPPO surrogate w.r.t. log pi, excluding -A.
+
+    Match the native exp-clamp derivative, including its zero gradient outside
+    the numerical guard. This avoids centering a different objective at extremes.
+    """
+    delta = log_probs - behavior_log_probs
+    ratio = _safe_exp_neg_ppo_kl(-delta)
+    masked = dppo_tv_mask(log_probs, behavior_log_probs, advantages, ratio, threshold)
+    valid = torch.isfinite(delta) & (delta.abs() <= _LOG_RATIO_EXP_CLAMP) & ~masked
+    return torch.where(valid, ratio, 0.0)
+
+
 def compute_dppo_tv_policy_loss(
     ppo_kl: torch.Tensor,
     log_probs: torch.Tensor,
@@ -295,11 +318,7 @@ def compute_dppo_tv_policy_loss(
     Returns the per-token loss and the masked indicator (1 where ``M`` is 0), logged as the clip fraction.
     """
     ratio = _safe_exp_neg_ppo_kl(ppo_kl)
-    with torch.no_grad():
-        mu = behavior_log_probs.clamp(min=-30.0, max=0.0).exp()
-        pi = log_probs.detach().clamp(min=-30.0, max=0.0).exp()
-        outside = (mu - pi).abs() > threshold
-        masked = outside & (((advantages > 0) & (ratio > 1.0)) | ((advantages < 0) & (ratio < 1.0)))
+    masked = dppo_tv_mask(log_probs, behavior_log_probs, advantages, ratio, threshold)
     pg_losses = torch.where(masked, torch.zeros_like(ratio), -ratio * advantages)
     return pg_losses, masked.float()
 

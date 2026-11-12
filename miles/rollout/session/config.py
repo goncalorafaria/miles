@@ -31,6 +31,8 @@ class SessionServerConfig(FrozenStrictBaseModel):
     rollout_top_logprobs_num: int
     rollout_sampling_logprobs_mode: str
     rollout_temperature: float
+    rollout_score_array: bool = False
+    score_centering_estimator: str = "topk"
 
 
 def compute_session_server_config(
@@ -62,6 +64,8 @@ def compute_session_server_config(
         session_sample_picker_path=getattr(args, "session_sample_picker_path", None),
         session_sample_postprocessor_path=getattr(args, "session_sample_postprocessor_path", None),
         rollout_top_logprobs_num=args.rollout_top_logprobs_num,
+        rollout_score_array=getattr(args, "rollout_score_array", False),
+        score_centering_estimator=getattr(args, "score_centering_estimator", "topk"),
         rollout_sampling_logprobs_mode=args.rollout_sampling_logprobs_mode,
         rollout_temperature=getattr(args, "rollout_temperature", 1.0),
     )

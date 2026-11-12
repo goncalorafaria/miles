@@ -1713,6 +1713,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 default="none",
                 help="Importance weights to center together with the policy score.",
             )
+            parser.add_argument("--score-centering-estimator", choices=["topk", "mc"], default="topk")
+            parser.add_argument(
+                "--rollout-score-array",
+                action="store_true",
+                help="Preserve generated candidate arrays through SGLang and base64 HTTP transport.",
+            )
             parser.add_argument("--score-centering-tis-clip", type=float, default=2.0)
             parser.add_argument("--score-centering-mis-low", type=float, default=0.5)
             parser.add_argument("--score-centering-mis-high", type=float, default=5.0)
@@ -3351,9 +3357,10 @@ def _resolve_run_uuid(args: argparse.Namespace) -> str:
 def validate_policy_loss_type_args(args) -> None:
     if args.policy_loss_type != "dppo_tv":
         return
-    assert (
-        args.loss_type == "policy_loss"
-    ), f"--policy-loss-type dppo_tv is a per-token loss of --loss-type policy_loss, not {args.loss_type}"
+    assert args.loss_type in (
+        "policy_loss",
+        "score_centering",
+    ), f"--policy-loss-type dppo_tv requires policy_loss or score_centering, not {args.loss_type}"
     assert (
         args.use_rollout_logprobs
     ), "--policy-loss-type dppo_tv anchors its trust region on the rollout policy: set --use-rollout-logprobs"

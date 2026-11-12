@@ -25,9 +25,9 @@ Both support preserving float32 logprob and int32 token-ID arrays through
 scheduler/detokenizer IPC and base64 encoding at the HTTP boundary. Response
 token sampling still uses the request's normal sampling settings.
 
-This is the native `/generate` path. TMax's session server v2 still needs to
-request, retain and align these candidates with its training samples. The
-serving patch alone does not enable score centering in TMax training.
+The same options now also pass through SGLang's chat schema for TMax session
+server v2. See [score centering with DPPO-TV](https://github.com/radixark/miles/blob/main/examples/tmax/SCORE_CENTERING.md) for the
+training configs, estimator definition, array alignment and validation scope.
 
 ## BF16 and NVFP4
 

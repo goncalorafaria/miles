@@ -8,6 +8,7 @@ from dataclasses import dataclass, fields
 
 import torch
 
+from miles.backends.training_utils.loss.hub.math_utils import compute_dppo_tv_policy_loss, dppo_tv_score_weight
 from miles.backends.training_utils.loss.hub.score_centering.importance_sampling import importance_sampling
 from miles.backends.training_utils.loss.hub.score_centering.masks import (
     drop_inactive_nan,
@@ -32,6 +33,8 @@ class ScoreCenteringInputs:
     mis_low: float = 0.5
     mis_high: float = 5.0
     eps: float = 1e-6
+    estimator: str = "topk"
+    dppo_tv_threshold: float | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -72,6 +75,10 @@ def score_centering_loss(inputs: ScoreCenteringInputs) -> tuple[torch.Tensor, Sc
     sampling = importance_sampling(
         inputs.mode, tis_clip=inputs.tis_clip, mis_low=inputs.mis_low, mis_high=inputs.mis_high
     )
+    if inputs.estimator not in ("topk", "mc"):
+        raise ValueError(f"Unknown score-centering estimator: {inputs.estimator}")
+    if inputs.dppo_tv_threshold is not None and inputs.mode != "none":
+        raise ValueError("DPPO-TV already defines its importance weights")
     active = inputs.advantages.detach() != 0
     train_head = sanitize_head_log_probs(inputs.train_head_log_probs, inputs.head_mask, active)
     rollout_head = sanitize_head_log_probs(inputs.rollout_head_log_probs, inputs.head_mask, active)
@@ -79,13 +86,44 @@ def score_centering_loss(inputs: ScoreCenteringInputs) -> tuple[torch.Tensor, Sc
         p, q = head_probs(train_head, inputs.head_mask), head_probs(rollout_head, inputs.head_mask)
         p_mass, q_mass = p.sum(-1), q.sum(-1)
         rho = (1 - q_mass).clamp_min(inputs.eps) / (1 - p_mass).clamp_min(inputs.eps)
-        alpha = sampling.tail_scale(rho, p.dtype)
-        residual = sampling.head_mass(p, q, train_head - rollout_head) - alpha.unsqueeze(-1) * p
-        weight = sampling.sample_weight(
-            drop_inactive_nan(inputs.train_log_probs - inputs.rollout_log_probs, active, 0.0)
-        )
+        delta = drop_inactive_nan(inputs.train_log_probs - inputs.rollout_log_probs, active, 0.0)
+        if inputs.dppo_tv_threshold is not None:
+            weight = dppo_tv_score_weight(
+                inputs.train_log_probs, inputs.rollout_log_probs, inputs.advantages, inputs.dppo_tv_threshold
+            )
+            candidate_weight = dppo_tv_score_weight(
+                train_head, rollout_head, inputs.advantages[:, None], inputs.dppo_tv_threshold
+            )
+            # SCT approximates the unobserved tail by ungated IS (q*w=p).
+            # Full-vocabulary SCT is exact because sum_v p_v grad log p_v=0.
+            residual = q * candidate_weight - p
+        else:
+            weight = sampling.sample_weight(delta)
+            alpha = sampling.tail_scale(rho, p.dtype)
+            residual = sampling.head_mass(p, q, train_head - rollout_head) - alpha.unsqueeze(-1) * p
+            if inputs.estimator == "mc":
+                candidate_weight = sampling.sample_weight(train_head - rollout_head)
+        if inputs.estimator == "mc":
+            # Draws are iid from q: average w(v)*score(v), retaining duplicates.
+            # Do not treat sampled probabilities as a truncated distribution or
+            # estimate a tail mass from their sum.
+            residual = candidate_weight.masked_fill(~inputs.head_mask, 0.0) / inputs.head_mask.shape[-1]
+            rho = torch.ones_like(rho)
+            p_mass = p.mean(-1)
+            q_mass = q.mean(-1)
     correction = (residual * scored_log_probs(train_head, residual)).sum(-1)
-    loss = -inputs.advantages.detach() * (weight * scored_log_probs(inputs.train_log_probs, weight) - correction)
+    if inputs.dppo_tv_threshold is not None:
+        # Preserve the actual DPPO surrogate value and gradient; no straight-through loss.
+        sampled_loss, _ = compute_dppo_tv_policy_loss(
+            -drop_inactive_nan(inputs.train_log_probs - inputs.rollout_log_probs.detach(), active, 0.0),
+            inputs.train_log_probs,
+            inputs.rollout_log_probs.detach(),
+            inputs.advantages.detach(),
+            inputs.dppo_tv_threshold,
+        )
+        loss = sampled_loss + inputs.advantages.detach() * correction
+    else:
+        loss = -inputs.advantages.detach() * (weight * scored_log_probs(inputs.train_log_probs, weight) - correction)
     return loss, ScoreCenteringMetrics(
         correction=correction.detach(),
         train_head_mass=p_mass,

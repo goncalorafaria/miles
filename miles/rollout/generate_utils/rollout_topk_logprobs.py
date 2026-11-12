@@ -1,5 +1,7 @@
 """Record the sampler's top-k candidate log-probs at generation time."""
 
+import base64
+import secrets
 from argparse import Namespace
 from collections.abc import Mapping
 from typing import Any
@@ -26,6 +28,22 @@ def configure_rollout_topk_logprobs_request(args: Namespace, request: dict[str, 
         if sampling.get(key) is None:
             sampling[key] = default
     validate_rollout_topk_logprobs_sampling(sampling, temperature=args.rollout_temperature, candidate_count=k)
+    if getattr(args, "rollout_score_array", False):
+        if sampling["top_p"] != 1.0 or sampling["top_k"] != -1 or sampling["min_p"] != 0.0:
+            raise ValueError("Array candidate scores require unfiltered sampling")
+        count = k if getattr(args, "score_centering_estimator", "topk") == "mc" else 0
+        # These are launch constraints: clients cannot silently change the estimator or transport.
+        for key, value in (("array_output_logprobs", True), ("score_centering_samples", count)):
+            if key in sampling and sampling[key] != value:
+                raise ValueError(f"{key} must match the training launch value {value}")
+            sampling[key] = value
+        request["return_flat_raw_output_top_logprobs"] = True
+        request["return_flat_raw_top_logprobs_b64"] = True
+        if not openai:
+            request.update(return_logprob=True, logprob_start_len=-1, stream=False)
+        seed_key = "seed" if openai else "sampling_seed"
+        if count and sampling.get(seed_key) is None:
+            sampling[seed_key] = secrets.randbits(63)
     if args.rollout_sampling_logprobs_mode == "support":
         # SGLang's support mode returns the actual post-filter behavior distribution.
         request.pop("top_logprobs", None)
@@ -40,7 +58,13 @@ def configure_rollout_topk_logprobs_request(args: Namespace, request: dict[str, 
 
 
 def append_rollout_topk_logprobs(
-    sample: Sample, meta: Mapping[str, Any], k: int, *, sampling_logprobs_mode: str = "selected"
+    sample: Sample,
+    meta: Mapping[str, Any],
+    k: int,
+    *,
+    sampling_logprobs_mode: str = "selected",
+    estimator: str = "topk",
+    array_output: bool = False,
 ) -> None:
     """Append compact [response, k] arrays after appending generated tokens.
 
@@ -52,6 +76,12 @@ def append_rollout_topk_logprobs(
     if not k:
         return
     n = len(meta.get("output_token_logprobs") or [])
+    if array_output:
+        ids, logps = _decode_candidate_arrays(meta, n, k, estimator)
+        _append_candidate_arrays(sample, ids, logps)
+        return
+    if estimator == "mc":
+        raise ValueError("MC candidates require array transport")
     support_mode = sampling_logprobs_mode == "support"
     field = "output_token_sampling_logprobs" if support_mode else "output_top_logprobs"
     rows = meta.get(field)
@@ -69,6 +99,29 @@ def append_rollout_topk_logprobs(
             probabilities = [entry[0] for entry in entries[:k]]
         ids[i, : len(token_ids)] = token_ids
         logps[i, : len(token_ids)] = probabilities
+    _append_candidate_arrays(sample, ids, logps)
+
+
+def _decode_candidate_arrays(meta: Mapping[str, Any], n: int, k: int, estimator: str):
+    expected_mode = f"mc{k}" if estimator == "mc" else "topk"
+    if meta.get("output_score_mode") != expected_mode:
+        raise ValueError(f"Expected output_score_mode={expected_mode}; check the patched SGLang image")
+    if meta.get("output_top_logprobs_shape") != [n, k] or meta.get("output_top_logprobs_null_prefix") != 0:
+        raise ValueError("Candidate array shape must match every generated token and configured K")
+    arrays = []
+    for field, dtype in (("idx", "int32"), ("val", "float32")):
+        key = f"output_top_logprobs_{field}_flat_b64"
+        if meta.get(f"{key}_dtype") != dtype or not isinstance(meta.get(key), str):
+            raise ValueError(f"Missing or invalid candidate array {key} ({dtype})")
+        data = base64.b64decode(meta[key], validate=True)
+        if len(data) != n * k * 4:
+            raise ValueError(f"Invalid candidate byte length for {key}")
+        # Copy once to writable, contiguous arrays. Later tensor views must not alias immutable bytes.
+        arrays.append(np.frombuffer(data, dtype="<i4" if field == "idx" else "<f4").reshape(n, k).copy())
+    return arrays
+
+
+def _append_candidate_arrays(sample: Sample, ids: np.ndarray, logps: np.ndarray) -> None:
     for name, values in (("rollout_topk_token_ids", ids), ("rollout_topk_log_probs", logps)):
         previous = getattr(sample, name)
         setattr(sample, name, values if previous is None else np.concatenate((previous, values)))
@@ -102,7 +155,7 @@ def pad_rollout_topk_logprobs(sample: Sample, count: int) -> None:
             setattr(sample, field, np.concatenate((values, padding)))
 
 
-def validate_rollout_topk_logprobs_sample(sample: Sample, k: int) -> None:
+def validate_rollout_topk_logprobs_sample(sample: Sample, k: int, *, estimator: str = "topk") -> None:
     """Validate candidate distributions, including custom producers and restored rollouts.
 
     Full-sample sorting and support matching have significant CPU and memory costs;
@@ -118,9 +171,11 @@ def validate_rollout_topk_logprobs_sample(sample: Sample, k: int) -> None:
         raise ValueError("Rollout top-k logprobs candidates must have --rollout-top-logprobs-num columns")
     valid = ids >= 0
     sorted_ids = np.sort(ids, axis=-1)
-    if ((sorted_ids[:, 1:] >= 0) & (sorted_ids[:, 1:] == sorted_ids[:, :-1])).any():
+    if estimator != "mc" and ((sorted_ids[:, 1:] >= 0) & (sorted_ids[:, 1:] == sorted_ids[:, :-1])).any():
         raise ValueError("Duplicate rollout top-k logprobs candidate token IDs")
     active = np.asarray(sample.loss_mask if sample.loss_mask is not None else [1] * sample.response_length, dtype=bool)
+    if estimator == "mc" and ((~valid | ~np.isfinite(logps)) & active[:, None]).any():
+        raise ValueError("MC requires K finite draws on every trained token; duplicates must be retained")
     if (active & ~valid.any(-1)).any():
         raise ValueError("Every trained token needs rollout top-k logprobs candidates")
     if sample.rollout_sampling_mask is not None:

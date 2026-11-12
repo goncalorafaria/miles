@@ -1,3 +1,25 @@
+diff --git a/python/sglang/srt/entrypoints/openai/protocol.py b/python/sglang/srt/entrypoints/openai/protocol.py
+index 6a65ba7572..53cea03084 100644
+--- a/python/sglang/srt/entrypoints/openai/protocol.py
++++ b/python/sglang/srt/entrypoints/openai/protocol.py
+@@ -899,6 +899,8 @@ class ChatCompletionRequest(BaseModel):
+     # Flat output top logprobs in choices[].meta_info (requires return_meta_info);
+     # choices[].logprobs top_logprobs are then empty.
+     return_flat_raw_output_top_logprobs: bool = False
++    array_output_logprobs: bool = False
++    score_centering_samples: Literal[0, 32, 64, 128] = 0
+     # Base64 by default on chat, unlike /generate; false returns plain JSON lists.
+     return_flat_raw_top_logprobs_b64: bool = True
+     reasoning_effort: ReasoningEffortType = Field(
+@@ -1154,6 +1156,8 @@ class ChatCompletionRequest(BaseModel):
+             "logit_bias": self.logit_bias,
+             "custom_params": self.custom_params,
+             "sampling_seed": self.seed,
++            "array_output_logprobs": self.array_output_logprobs,
++            "score_centering_samples": self.score_centering_samples,
+             "spaces_between_special_tokens": spaces_between_special_tokens,
+         }
+ 
 diff --git a/python/sglang/srt/layers/mc_logprobs.py b/python/sglang/srt/layers/mc_logprobs.py
 new file mode 100644
 index 0000000000..e00e93025b
@@ -692,10 +714,10 @@ index 2491004d3e..f569673a7d 100644
      /// Every field reaches the wire, at the position Python expects.
 diff --git a/test/registered/sampling/test_mc32.py b/test/registered/sampling/test_mc32.py
 new file mode 100644
-index 0000000000..7c3d335031
+index 0000000000..88ecc7c9de
 --- /dev/null
 +++ b/test/registered/sampling/test_mc32.py
-@@ -0,0 +1,301 @@
+@@ -0,0 +1,330 @@
 +"""MC32/64/128 correctness and typed-array transport; GPU tests require CUDA."""
 +
 +from types import SimpleNamespace
@@ -997,6 +1019,35 @@ index 0000000000..7c3d335031
 +        compute_mc_scores(
 +            torch.empty(1, 10), torch.tensor([1]), torch.tensor([1]), num_samples=count
 +        )
++
++
++@pytest.mark.parametrize("count", [0, 32, 64, 128])
++def test_openai_chat_preserves_score_sampling_fields(count):
++    # Session v2 uses chat, so these fields must survive its Pydantic schema.
++    from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
++
++    request = ChatCompletionRequest(
++        model="test",
++        messages=[{"role": "user", "content": "hello"}],
++        seed=17,
++        temperature=1.0,
++        top_p=1.0,
++        top_k=-1,
++        max_tokens=8,
++        logprobs=True,
++        top_logprobs=count or 32,
++        return_meta_info=True,
++        return_flat_raw_output_top_logprobs=True,
++        array_output_logprobs=True,
++        score_centering_samples=count,
++    )
++    params = request.to_sampling_params(stop=[], model_generation_config={})
++    assert params["array_output_logprobs"] is True
++    assert params["score_centering_samples"] == count
++    assert params["sampling_seed"] == 17
++    sampling = SamplingParams(**params)
++    sampling.normalize(None)
++    sampling.verify(256)
 diff --git a/test/registered/unit/managers/test_flat_raw_top_logprobs.py b/test/registered/unit/managers/test_flat_raw_top_logprobs.py
 index 96a35224cb..7a7ad0a1db 100644
 --- a/test/registered/unit/managers/test_flat_raw_top_logprobs.py

@@ -1,5 +1,7 @@
 # TMax Terminal-RL
 
+Score centering: [SCT/SCMC with DPPO-TV](SCORE_CENTERING.md) covers the combined loss, training configs and validation scope.
+
 GRPO and on-policy distillation on the 14.6k TMax terminal tasks
 ([`allenai/tmax-15k-open-instruct`](https://huggingface.co/datasets/allenai/tmax-15k-open-instruct)),
 the Miles port of open-instruct's Terminal-RL recipe with the `swerl_vanillux_sandbox` environment.

@@ -184,6 +184,10 @@ def score_centering_loss_function(
             head_mask=(ids >= 0) & active.unsqueeze(-1),
             advantages=advantages,
             mode=args.score_centering_is,
+            estimator=getattr(args, "score_centering_estimator", "topk"),
+            dppo_tv_threshold=(
+                args.dppo_tv_threshold if getattr(args, "policy_loss_type", None) == "dppo_tv" else None
+            ),
             tis_clip=args.score_centering_tis_clip,
             mis_low=args.score_centering_mis_low,
             mis_high=args.score_centering_mis_high,
@@ -196,7 +200,13 @@ def score_centering_loss_function(
         args, batch, entropy, selected[:, 0], rollout, active, sum_of_sample_mean, kl_log_probs
     )
     loss = loss + pg_loss
-    log.update({key: sum_of_sample_mean(value).detach() for key, value in metrics.as_log_dict().items()})
+    metric_values = metrics.as_log_dict()
+    if getattr(args, "score_centering_estimator", "topk") == "mc":
+        # MC probes are draws, not a partition of vocabulary mass.
+        metric_values["sc_train_probe_mean_prob"] = metric_values.pop("sc_train_head_mass")
+        metric_values["sc_rollout_probe_mean_prob"] = metric_values.pop("sc_rollout_head_mass")
+        metric_values.pop("sc_tail_ratio")
+    log.update({key: sum_of_sample_mean(value).detach() for key, value in metric_values.items()})
     log.update(loss=loss.detach(), pg_loss=pg_loss.detach())
     train_log_probs = torch.where(active, selected[:, 0].detach(), 0.0)
     log["train_rollout_logprob_abs_diff"] = sum_of_sample_mean((train_log_probs - rollout).abs()).detach()

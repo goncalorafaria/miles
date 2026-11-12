@@ -18,6 +18,16 @@ def validate_rollout_topk_logprobs_args(args: Any) -> None:
     k = args.rollout_top_logprobs_num
     if k < 0:
         raise ValueError(f"--rollout-top-logprobs-num must be non-negative, got {k}")
+    array = getattr(args, "rollout_score_array", False)
+    estimator = getattr(args, "score_centering_estimator", "topk")
+    if estimator == "mc":
+        if getattr(args, "loss_type", None) != "score_centering" or not array or k not in (32, 64, 128):
+            raise ValueError("MC score centering requires score_centering loss, --rollout-score-array and K=32/64/128")
+    if array:
+        if not k or args.rollout_sampling_logprobs_mode != "selected":
+            raise ValueError("Array score transport requires positive K and unfiltered sampling")
+        if getattr(args, "sglang_speculative_algorithm", None):
+            raise ValueError("Array score transport does not support speculative decoding")
     if not k:
         return
     if args.rollout_sampling_logprobs_mode == "support" and k < args.rollout_top_k:
