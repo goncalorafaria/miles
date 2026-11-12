@@ -29,7 +29,7 @@ from a pinned copy of the Prime-RL source, as do its search, terminal and judge 
 | `search_reward.py` | The reward: Prime-RL's format gates (run from its source) and its two-stage judge (ported), on the session server's sample |
 | `search_loss.py` | Prime-RL's `group_token_mean` loss aggregation through `--custom-convert-samples-to-train-data-path` |
 | `search_metrics.py` | Per-rollout W&B metrics: stop conditions, tool outcomes, judge outcomes, reward components, zero-variance groups |
-| `configs/` | Experiment configs: `smoke_search_4b.yaml` (4 GPUs, bf16 logits) and its twin `smoke_search_4b_fp32_head.yaml` |
+| `configs/` | Experiment configs: `smoke_search_4b.yaml` (4 GPUs, bf16 logits), its twin `smoke_search_4b_fp32_head.yaml`, that on the commit-named image `smoke_search_4b_fp32_head_imgd0831a475b.yaml`, and `prod_4node_search_4b.yaml` (Prime-RL's scale, 4 nodes) |
 | `beaker/services.py`, `beaker/services_template.json` | Prime-RL's service tasks (Redis, gateway, terminal, search, judge) for the Beaker experiment |
 | `beaker/wait_for_services.py` | The head waits for the services and finds their gateway |
 
