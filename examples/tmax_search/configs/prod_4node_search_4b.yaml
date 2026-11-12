@@ -2,7 +2,8 @@
 # rollouts, 128k per episode, on 4 nodes of 8 B300 (2 training nodes, TP 1 x DP 16, and 2 rollout nodes of 16 SGLang
 # engines: Prime-RL's 16 learner + 16 inference GPUs), the vLLM judge on a 17th Holmes GPU and 32 search + 32 terminal
 # replicas on Jupiter CPUs (its run.yaml's counts). fp32 logits on both sides, as the experiment's fp32 in its name
-# includes. Not yet run; submit with:
+# includes. At priority urgent without min_runtime (the judge and the CPU services then keep none either), as the
+# image's smoke ran. Submit with:
 #   python examples/tmax/beaker/submit.py examples/tmax_search/configs/prod_4node_search_4b.yaml
 exp_name: search_prod4node_4b_bcrl_v11
 model_name: Qwen3.5-4B
@@ -40,7 +41,6 @@ beaker:
   workspace: ai2/oe-agents-holmes
   budget: ai2/oe-omai
   priority: urgent
-  min_runtime: 8h
   retries: 3                                  # Prime-RL's allowed_task_retries
   nodes: 4
   gpus: 8
