@@ -362,8 +362,12 @@ storage on oe-adapt-default (`smoke_moe_sync_gateway.yaml` and its priority-high
 train/rollout |Δ log-prob| 0.0063-0.0090, grad_norm 0.17-0.18 at step 1 (steps 0 and 2 were all-uniform groups).
 On one Jupiter node (8x H100 80GB, `smoke_moe_sync_gateway_jupiter.yaml`: two 4-GPU engines with SGLang EP 4,
 training EP 8) the rollout ran, but the first training step ran out of memory: the torch log-prob backend's fp32
-logits for ~8k tokens needed 8 GiB next to the trainer's 49 GB and the paused colocated engine's 27 GB. 80GB GPUs
-need `--log-probs-backend fused` (`smoke_moe_sync_gateway_jupiter_fused.yaml`).
+logits for ~8k tokens needed 8 GiB next to the trainer's 49 GB and the paused colocated engine's 27 GB. With
+`--log-probs-backend fused` (`_jupiter_fused`) the output layer's bf16 logits for one ~16k-token episode (7.4 GiB) still
+did not fit, and with context parallelism 2 added (`_jupiter_fused_cp2`; Megatron accepts CP 2 with EP 8) the GPU
+was full in the linear-attention forward: the trainer holds ~36 GB before any data and the paused engine keeps
+27 GB after releasing its weights and KV cache. The colocated 35B-A3B smoke is parked on H100 (2026-11-11).
+Untried: one SGLang engine over all 8 GPUs (upstream's 8x H100 layout), SGLang without CUDA graphs, or 2 nodes.
 
 Fully-async GRPO, Qwen3.5-9B, 2 training + 2 rollout GPUs: 4 steps, grad_norm 0.40 / 0.28 / 0.23 / 0.22,
 train/rollout KL 3e-4 to 4e-4, at most 1 weight version stale, no stale or aborted groups.
