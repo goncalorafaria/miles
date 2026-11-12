@@ -122,6 +122,27 @@ model/task data, episode limits, sandbox gateway and BF16 inference. NVFP4 servi
 configs are preserved for later testing. This is the full TMax entrypoint, not
 the separate HF synthetic-reward probe below.
 
+## Prepared MC32 / NVFP4 Beaker preset
+
+[smoke_4b_dppo_tv_scmc32_nvfp4.yaml](configs/smoke_4b_dppo_tv_scmc32_nvfp4.yaml)
+prepares the same TMax smoke workload with SCMC32, array transport and 4096-position
+head chunks. Its Beaker context is `priority: urgent`, `preemptible: true`, with
+no `min_runtime`, `minRuntime` or `autoResume`. Retries remain zero. It therefore
+requests preemptible capacity without a guaranteed minimum runtime. No job was
+submitted for this preset.
+
+**This is a prepared recipe, not a runnable NVFP4 RL configuration yet.** Its
+[engine deployment](configs/inference/engines_nvfp4_mc32.yaml) selects a separate
+serialized ModelOpt NVFP4 checkpoint, leaves training in BF16, and explicitly
+keeps actor weight updates enabled. The destination checkpoint does not exist
+and the pinned image's publisher cannot produce dense NVFP4 updates. A quantized
+initial checkpoint alone is insufficient: the trainer currently derives its
+publication metadata from the BF16 checkpoint, and the NVFP4 exporter handles
+only routed experts. Before submitting, implement dense publication and metadata
+routing, prepare the converted checkpoint, validate a weight update/reload, and
+pin the resulting runtime image. Merely selecting `modelopt_fp4` on the BF16
+checkpoint is not an NVFP4 qualification.
+
 ## TMax SCT128 run
 
 The full terminal-RL smoke was submitted as
