@@ -14,8 +14,8 @@ unchanged unless `--loss-type score_centering` is enabled.
 
 The smoke configs retain the existing 4-GPU, 3-update TMax recipe. Production
 configs retain 256 responses per update and the 64K episode context. They use
-BF16 inference; the [NVFP4 inference-only configs](configs/inference/README.md)
-still require dense checkpoint conversion and weight-publication support for RL.
+BF16 inference unless the explicit NVFP4 variant is selected; see the dense
+NVFP4 publication path below.
 
 The SCT128 smoke config pins the patched runtime `01M78W2R0WT8YC53P4V3H3RHCH`,
 built with [Dockerfile.score-logprobs](docker/Dockerfile.score-logprobs) from the
@@ -119,29 +119,46 @@ was added.
 The SCT128 recipe keeps the existing TMax smoke workload: 2 trainer + 2 inference
 GPUs, 32 terminal responses per update, three updates, the same prepared TMax
 model/task data, episode limits, sandbox gateway and BF16 inference. NVFP4 serving
-configs are preserved for later testing. This is the full TMax entrypoint, not
+configs now have a separate publication validation job. This is the full TMax entrypoint, not
 the separate HF synthetic-reward probe below.
 
-## Prepared MC32 / NVFP4 Beaker preset
+## Dense NVFP4 with MC32
 
-[smoke_4b_dppo_tv_scmc32_nvfp4.yaml](configs/smoke_4b_dppo_tv_scmc32_nvfp4.yaml)
-prepares the same TMax smoke workload with SCMC32, array transport and 4096-position
-head chunks. Its Beaker context is `priority: urgent`, `preemptible: true`, with
-no `min_runtime`, `minRuntime` or `autoResume`. Retries remain zero. It therefore
-requests preemptible capacity without a guaranteed minimum runtime. No job was
-submitted for this preset.
+[prod_4b_dppo_tv_scmc32_nvfp4.yaml](configs/prod_4b_dppo_tv_scmc32_nvfp4.yaml)
+keeps the production TMax workload: two 8-GPU nodes, eight trainer and eight
+inference GPUs, 256 terminal responses per update, 500 updates, DPPO-TV, MC32
+arrays, and 4096-position LM-head chunks. The matching
+[smoke config](configs/smoke_4b_dppo_tv_scmc32_nvfp4.yaml) uses two trainer and two
+inference GPUs for three updates. Both request Holmes with urgent priority,
+preemptible scheduling, zero retries, and no minimum runtime.
 
-**This is a prepared recipe, not a runnable NVFP4 RL configuration yet.** Its
-[engine deployment](configs/inference/engines_nvfp4_mc32.yaml) selects a separate
-serialized ModelOpt NVFP4 checkpoint, leaves training in BF16, and explicitly
-keeps actor weight updates enabled. The destination checkpoint does not exist
-and the pinned image's publisher cannot produce dense NVFP4 updates. A quantized
-initial checkpoint alone is insufficient: the trainer currently derives its
-publication metadata from the BF16 checkpoint, and the NVFP4 exporter handles
-only routed experts. Before submitting, implement dense publication and metadata
-routing, prepare the converted checkpoint, validate a weight update/reload, and
-pin the resulting runtime image. Merely selecting `modelopt_fp4` on the BF16
-checkpoint is not an NVFP4 qualification.
+The patched `nvfp4_dense_online` SGLang method accepts the original BF16 TMax
+checkpoint and the trainer's existing BF16 publication stream. The native
+`end_weight_update` hook quantizes each completed fused dense matrix into NVFP4
+weights and FP8 block scales. Dense GEMMs quantize activations dynamically and
+use FlashInfer CUTLASS W4A4 on Blackwell. Embeddings, LM head, normalization,
+convolution/state parameters, and KV cache retain their existing precision.
+There is no separate converted checkpoint or trainer quantization metadata.
+
+BF16 loader weights remain resident alongside packed weights. This preserves
+partial/bucketed loads and fused projection loaders but adds memory compared
+with packed-only inference. Packed weights/scales are refreshed in place so
+CUDA graphs see newly published values. No host synchronization is added.
+This implementation targets dense BF16/FP16 source models; it rejects MoE and
+already-quantized checkpoint inputs.
+
+[sglang_nvfp4_dense_online.patch](../../docker/patch/sglang_nvfp4_dense_online.patch)
+is included in both Docker build paths. Runtime `01M7915NQT51SK6EY03X4E5E2Y`
+contains it and the score-array patch on the unchanged SGLang base. The
+validation image `01M790ZWG23G2RDQCAQ69B862Y` has identical kernels; the final
+image additionally registers the method in the CLI allowlist.
+The Blackwell validation is
+[01M7911C7QQ3NP1Z88T3YF1AW8](https://beaker.org/ex/01M7911C7QQ3NP1Z88T3YF1AW8):
+independent dequantized-reference GEMM checks, repeated CUDA-graph weight
+refreshes, and real 4B generation with MC32/SCT32 arrays before/after a changed
+weight and restoration. **Submitted; results pending.** The two-node production
+job is held until this validation passes. This is not a throughput benchmark
+or evidence of completed terminal training.
 
 ## TMax SCT128 run
 

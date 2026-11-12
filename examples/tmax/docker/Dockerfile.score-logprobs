@@ -7,3 +7,9 @@ RUN cd /sgl-workspace/sglang && \
     git apply --check /tmp/sglang_score_logprobs.patch && \
     git apply /tmp/sglang_score_logprobs.patch && \
     rm /tmp/sglang_score_logprobs.patch
+
+COPY docker/patch/sglang_nvfp4_dense_online.patch /tmp/sglang_nvfp4_dense_online.patch
+RUN cd /sgl-workspace/sglang && \
+    git apply --check /tmp/sglang_nvfp4_dense_online.patch && \
+    git apply /tmp/sglang_nvfp4_dense_online.patch && \
+    rm /tmp/sglang_nvfp4_dense_online.patch

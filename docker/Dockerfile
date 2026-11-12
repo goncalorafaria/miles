@@ -230,6 +230,7 @@ RUN rm -rf /root/.cache/pip /root/flash-attention
 # ====================================== Install sglang-miles ============================================
 
 COPY docker/patch/sglang_score_logprobs.patch /tmp/sglang_score_logprobs.patch
+COPY docker/patch/sglang_nvfp4_dense_online.patch /tmp/sglang_nvfp4_dense_online.patch
 
 # Install sglang at SGLANG_COMMIT, fetched by its hash because sglang-miles is rewritten from
 # time to time, or else at the sglang-miles HEAD.
@@ -240,7 +241,7 @@ RUN cd /sgl-workspace/sglang && \
     git fetch origin ${SGLANG_COMMIT:-${SGLANG_BRANCH}} && \
     git checkout -f FETCH_HEAD && \
     git apply --check /tmp/sglang_score_logprobs.patch && \
-    git apply /tmp/sglang_score_logprobs.patch && \
+    git apply /tmp/sglang_score_logprobs.patch && git apply /tmp/sglang_nvfp4_dense_online.patch && \
     SGLANG_BUILD_RUST_EXTS=none pip install -e "python[all]" --no-deps
 
 COPY docker/install-kube-tools.sh /tmp/install-kube-tools.sh

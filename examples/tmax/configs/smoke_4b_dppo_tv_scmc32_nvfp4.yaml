@@ -1,6 +1,4 @@
-# PREPARATION ONLY: not runnable with the pinned runtime's MoE-only NVFP4 publisher.
-# Requires a serialized dense NVFP4 checkpoint and validated dense RL weight updates.
-# Do not submit until those prerequisites are implemented; see ../SCORE_CENTERING.md.
+# Dense W4A4 NVFP4 with BF16 publication; requires the patched runtime.
 exp_name: tmax_4b_smoke_dppo_tv_scmc32_nvfp4
 model_name: Qwen3.5-4B-tmax-template
 sandbox_backend: gateway
@@ -27,8 +25,8 @@ start_failure: drop
 save_interval: 1000
 extra_args: --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
   1800 --loss-type score_centering --score-centering-estimator mc --rollout-score-array
-  --rollout-top-logprobs-num 32 --score-centering-is none --score-centering-head-chunk-size 4096 --log-probs-chunk-size 4096
-  --sglang-config examples/tmax/configs/inference/engines_nvfp4_mc32.yaml
+  --rollout-top-logprobs-num 32 --score-centering-is none --score-centering-head-chunk-size
+  4096 --log-probs-chunk-size 4096 --sglang-quantization nvfp4_dense_online
 model_dir: /weka/nora-default/shashankg/miles_tmax_v2/models
 data_dir: /weka/nora-default/shashankg/miles_tmax_v2/datasets
 output_dir: /weka/oe-adapt-default/gfaria/tmax-score-logprobs/output
@@ -43,7 +41,7 @@ beaker:
   retries: 0
   gpus: 4
   shared_memory: 256GiB
-  image: beaker:01M78W2R0WT8YC53P4V3H3RHCH
+  image: beaker:01M7915NQT51SK6EY03X4E5E2Y
   gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
   gateway_min_replicas: 8
   secrets:

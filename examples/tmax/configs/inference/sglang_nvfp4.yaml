@@ -1,12 +1,7 @@
-# Native SGLang --config file; inference only, pending Blackwell validation.
-# Requires an actual serialized ModelOpt NVFP4 checkpoint derived from the
-# matching BF16 TMax checkpoint. This directory has NOT been prepared yet.
-# nvfp4_online is MoE-only at the pinned revision; do not substitute it here.
-# Dense BF16 -> NVFP4 publication during RL is not supported by this Miles base.
-model-path: /weka/gfaria/tmax-4b-miles/models/Qwen3.5-4B-tmax-template-NVFP4
+# Native SGLang config using the BF16 source checkpoint and patched dense W4A4 kernels.
+model-path: /weka/nora-default/shashankg/miles_tmax_v2/models/Qwen3.5-4B-tmax-template
 dtype: bfloat16
-quantization: modelopt_fp4
-fp4-gemm-backend: flashinfer_cutlass
+quantization: nvfp4_dense_online
 tp-size: 1
 context-length: 67584
 mem-fraction-static: 0.8

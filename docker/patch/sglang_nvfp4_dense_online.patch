@@ -1,0 +1,160 @@
+diff --git a/python/sglang/srt/arg_groups/choices.py b/python/sglang/srt/arg_groups/choices.py
+index e9a8186422..427bfabde5 100644
+--- a/python/sglang/srt/arg_groups/choices.py
++++ b/python/sglang/srt/arg_groups/choices.py
+@@ -42,6 +42,7 @@ QUANTIZATION_CHOICES = [
+     "modelopt_fp8",
+     "modelopt_fp4",
+     "nvfp4_online",
++    "nvfp4_dense_online",
+     "modelopt_mixed",
+     "petit_nvfp4",
+     "w8a8_int8",  # mentioned in quantization.md documentation, supporting compressed-tensors quant_method.
+diff --git a/python/sglang/srt/layers/quantization/__init__.py b/python/sglang/srt/layers/quantization/__init__.py
+index 0f5829a6f5..dc3d909aed 100644
+--- a/python/sglang/srt/layers/quantization/__init__.py
++++ b/python/sglang/srt/layers/quantization/__init__.py
+@@ -38,6 +38,7 @@ from sglang.srt.layers.quantization.moe_wna16 import MoeWNA16Config
+ from sglang.srt.layers.quantization.mxfp4 import Mxfp4Config
+ from sglang.srt.layers.quantization.npu_mxfp4 import Mxfp4W4A8Config
+ from sglang.srt.layers.quantization.npu_mxfp4_w4a4 import Mxfp4W4A4Config
++from sglang.srt.layers.quantization.nvfp4_dense_online import NvFp4DenseOnlineConfig
+ from sglang.srt.layers.quantization.nvfp4_online import NvFp4OnlineConfig
+ from sglang.srt.layers.quantization.petit import PetitNvFp4Config
+ from sglang.srt.layers.quantization.quark.quark import QuarkConfig
+@@ -67,6 +68,7 @@ BASE_QUANTIZATION_METHODS: Dict[str, Type[QuantizationConfig]] = {
+     "modelopt_fp8": ModelOptFp8Config,
+     "modelopt_fp4": ModelOptFp4Config,
+     "nvfp4_online": NvFp4OnlineConfig,
++    "nvfp4_dense_online": NvFp4DenseOnlineConfig,
+     "modelopt_mixed": ModelOptMixedPrecisionConfig,
+     "w8a8_int8": W8A8Int8Config,
+     "w8a8_fp8": W8A8Fp8Config,
+diff --git a/python/sglang/srt/layers/quantization/nvfp4_dense_online.py b/python/sglang/srt/layers/quantization/nvfp4_dense_online.py
+new file mode 100644
+index 0000000000..4693569103
+--- /dev/null
++++ b/python/sglang/srt/layers/quantization/nvfp4_dense_online.py
+@@ -0,0 +1,122 @@
++"""Dense W4A4 NVFP4 serving with BF16 checkpoint and RL update inputs.
++
++The BF16 loader parameters remain allocated so ordinary fused/sharded loaders
++and bucketed update sessions retain their contracts. Packed inference parameters
++are refreshed in place by the existing end_weight_update post-load hook.
++"""
++
++import torch
++import torch.nn.functional as F
++
++from sglang.srt.layers.quantization.base_config import (
++    LinearMethodBase,
++    QuantizationConfig,
++)
++from sglang.srt.layers.quantization.unquant import UnquantizedLinearMethod
++from sglang.srt.layers.utils import copy_or_rebind_param
++
++
++class NvFp4DenseOnlineConfig(QuantizationConfig):
++    @classmethod
++    def get_name(cls):
++        return "nvfp4_dense_online"
++
++    @classmethod
++    def get_supported_act_dtypes(cls):
++        return [torch.bfloat16, torch.float16]
++
++    @classmethod
++    def get_min_capability(cls):
++        return 100
++
++    @staticmethod
++    def get_config_filenames():
++        return []
++
++    @classmethod
++    def from_config(cls, config):
++        raise ValueError(
++            "nvfp4_dense_online requires an unquantized BF16/FP16 checkpoint"
++        )
++
++    def get_quant_method(self, layer, prefix):
++        # Deferred to avoid the linear -> quantization registry import cycle.
++        from sglang.srt.layers.linear import LinearBase
++        from sglang.srt.layers.moe.fused_moe_triton import FusedMoE
++        from sglang.srt.layers.vocab_parallel_embedding import ParallelLMHead
++
++        if isinstance(layer, FusedMoE):
++            raise ValueError("nvfp4_dense_online supports dense models only")
++        if isinstance(layer, ParallelLMHead):
++            return UnquantizedLinearMethod()
++        if isinstance(layer, LinearBase):
++            return NvFp4DenseOnlineLinearMethod()
++        return None
++
++
++def _inverse_global_scale(tensor):
++    # Stay on device, including under CUDA graph capture. Zero weights/inputs
++    # must produce finite scales; no .item() or host synchronization is needed.
++    return (tensor.abs().amax().float().clamp_min(1e-12) / (448.0 * 6.0)).reshape(1)
++
++
++class NvFp4DenseOnlineLinearMethod(LinearMethodBase):
++    def create_weights(
++        self,
++        layer,
++        input_size_per_partition,
++        output_partition_sizes,
++        input_size,
++        output_size,
++        params_dtype,
++        **extra_weight_attrs,
++    ):
++        if params_dtype not in (torch.bfloat16, torch.float16):
++            raise ValueError("Dense online NVFP4 requires BF16/FP16 source weights")
++        UnquantizedLinearMethod().create_weights(
++            layer,
++            input_size_per_partition,
++            output_partition_sizes,
++            input_size,
++            output_size,
++            params_dtype,
++            **extra_weight_attrs,
++        )
++        layer.nvfp4_output_size = sum(output_partition_sizes)
++        layer.nvfp4_pad_k = (-input_size_per_partition) % 32
++        layer.nvfp4_pad_n = (-layer.nvfp4_output_size) % 32
++
++    def process_weights_after_loading(self, layer):
++        # FlashInfer is an optional CUDA dependency; defer until GPU loading.
++        from flashinfer import fp4_quantize
++
++        weight = F.pad(layer.weight, (0, layer.nvfp4_pad_k, 0, layer.nvfp4_pad_n))
++        descale = _inverse_global_scale(weight)
++        packed, block_scales = fp4_quantize(weight, descale.reciprocal())
++        # Fused QKV and gate/up have one global scale, computed only after all
++        # shards/buckets arrive. Keep captured inference addresses stable.
++        copy_or_rebind_param(layer, "nvfp4_weight", packed)
++        copy_or_rebind_param(layer, "nvfp4_weight_scale", block_scales)
++        copy_or_rebind_param(layer, "nvfp4_weight_descale", descale)
++
++    def apply(self, layer, x, bias=None):
++        # Import is cached; kernels and reductions remain device-side.
++        from flashinfer import fp4_quantize, mm_fp4
++
++        original_shape = x.shape[:-1]
++        x = F.pad(x.reshape(-1, x.shape[-1]), (0, layer.nvfp4_pad_k)).contiguous()
++        descale = _inverse_global_scale(x)
++        packed, block_scales = fp4_quantize(x, descale.reciprocal())
++        out = mm_fp4(
++            packed,
++            layer.nvfp4_weight.T,
++            block_scales,
++            layer.nvfp4_weight_scale.T,
++            descale * layer.nvfp4_weight_descale,
++            out_dtype=x.dtype,
++            backend="cutlass",
++        )
++        out = out[..., : layer.nvfp4_output_size]
++        if bias is not None:
++            out = out + bias
++        return out.reshape(*original_shape, layer.nvfp4_output_size)

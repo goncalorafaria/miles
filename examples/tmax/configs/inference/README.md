@@ -36,31 +36,19 @@ SGLANG_RETURN_ORIGINAL_LOGPROB=0 sglang serve \
   --model-path /path/to/Qwen3.5-4B-tmax-template
 ```
 
-For NVFP4, first prepare a **serialized ModelOpt NVFP4 checkpoint** from the
-same TMax model, retaining its tokenizer and patched chat template. Its model
-metadata must identify NVFP4, with packed weights and scales for the selected
-dense layers. The default directory in the config is a destination placeholder;
-no converted checkpoint is included or currently prepared. On a Blackwell GPU:
+For NVFP4, use the same BF16 source checkpoint with the patched runtime:
 
 ```bash
 SGLANG_RETURN_ORIGINAL_LOGPROB=0 sglang serve \
   --config examples/tmax/configs/inference/sglang_nvfp4.yaml \
-  --model-path /path/to/Qwen3.5-4B-tmax-template-NVFP4
+  --model-path /path/to/Qwen3.5-4B-tmax-template
 ```
 
-`dtype: bfloat16` retains BF16 for unquantized layers; `modelopt_fp4` plus the
-checkpoint metadata selects packed NVFP4 dense GEMMs. This config does not
-quantize the KV cache. Check the loaded module quantization methods and packed
-weights before treating a run as an NVFP4 measurement. Both configs use the
-same port and are intended for sequential comparisons.
-
-Do not point the NVFP4 config at the BF16 checkpoint: SGLang's nonserialized
-`modelopt_fp4` fallback and `nvfp4_online` quantize only MoE expert weights at
-this revision. Qwen3.5-4B is dense. Miles's existing
-[`quantize_params_nvfp4`](../../../../miles/backends/megatron_utils/megatron_to_hf/processors/quantizer_nvfp4.py)
-also quantizes only routed experts. Full RL therefore needs dense NVFP4 weight
-publication and an update/reload test before adding NVFP4 to the production
-training configs. The configs here have not been GPU qualified.
+The `nvfp4_dense_online` method converts dense weights on load and after RL
+publication. It uses W4A4 dense GEMMs and retains BF16 staging weights. See
+[dense NVFP4 with MC32](../../SCORE_CENTERING.md#dense-nvfp4-with-mc32) for the
+implementation, precision coverage, runtime image, and validation status. Both
+server configs use the same port and are intended for sequential comparisons.
 
 ## Requests and array decoding
 
