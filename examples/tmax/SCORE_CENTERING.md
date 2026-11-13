@@ -181,10 +181,14 @@ NVFP4 production config, runtime image, MC32 arrays, DPPO-TV, 4K head chunks,
 arguments differ. The BF16 control launches independently; NVFP4 production
 remains gated on all four validation tests passing without skips.
 
-Matched runs pinned to Miles `924bc88` and runtime
+Matched production retries pinned to Miles `d45db5c` and runtime
 `01M793QBYA81CQXDHVFBNS2QCN`:
-- [BF16 two-node production](https://beaker.org/ex/01M793SQKE64ADTNCJQ1K5EQHN):
-  both replicas started; the TMax training entrypoint launched, with training results pending.
+- [Initial BF16 two-node run](https://beaker.org/ex/01M793SQKE64ADTNCJQ1K5EQHN):
+  started but failed before training because W&B denied access to `ai2-llm`.
+  Both production configs now use the user-requested `graf/oe-general-agents`
+  destination with the existing Beaker credential.
+- [BF16 retry](https://beaker.org/ex/01M794T478A3BXZN89S9TWBP9W):
+  submitted with the corrected tracking destination; training results pending.
 - [NVFP4 publication retry](https://beaker.org/ex/01M794KXY7XJ97FNVB2FMX9Z2Z):
   scheduled; the separate two-node NVFP4 run submits only after this passes.
 
