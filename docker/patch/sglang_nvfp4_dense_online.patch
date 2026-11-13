@@ -32,10 +32,10 @@ index 0f5829a6f5..dc3d909aed 100644
      "w8a8_fp8": W8A8Fp8Config,
 diff --git a/python/sglang/srt/layers/quantization/nvfp4_dense_online.py b/python/sglang/srt/layers/quantization/nvfp4_dense_online.py
 new file mode 100644
-index 0000000000..4693569103
+index 0000000000..cefa0201e2
 --- /dev/null
 +++ b/python/sglang/srt/layers/quantization/nvfp4_dense_online.py
-@@ -0,0 +1,122 @@
+@@ -0,0 +1,125 @@
 +"""Dense W4A4 NVFP4 serving with BF16 checkpoint and RL update inputs.
 +
 +The BF16 loader parameters remain allocated so ordinary fused/sharded loaders
@@ -69,6 +69,9 @@ index 0000000000..4693569103
 +
 +    @staticmethod
 +    def get_config_filenames():
++        return []
++
++    def get_scaled_act_names(self):
 +        return []
 +
 +    @classmethod

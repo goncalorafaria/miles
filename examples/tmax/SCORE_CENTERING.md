@@ -148,7 +148,7 @@ This implementation targets dense BF16/FP16 source models; it rejects MoE and
 already-quantized checkpoint inputs.
 
 [sglang_nvfp4_dense_online.patch](../../docker/patch/sglang_nvfp4_dense_online.patch)
-is included in both Docker build paths. Runtime `01M7915NQT51SK6EY03X4E5E2Y`
+is included in both Docker build paths. Runtime `01M793QBYA81CQXDHVFBNS2QCN`
 contains it and the score-array patch on the unchanged SGLang base.
 The first Blackwell validation,
 [01M7911C7QQ3NP1Z88T3YF1AW8](https://beaker.org/ex/01M7911C7QQ3NP1Z88T3YF1AW8),
@@ -158,13 +158,19 @@ used the obsolete `cuda_graph_max_bs` keyword. The test now uses
 `cuda_graph_max_bs_decode`; all 13 Engine keywords were checked against the
 pinned runtime schema.
 
-The corrected validation is
+The second validation,
 [01M7939AV1GJVQBCZY4DEKSNRQ](https://beaker.org/ex/01M7939AV1GJVQBCZY4DEKSNRQ),
-using the final runtime image. **Submitted; results pending.** It reruns all
-four cases, including real 4B generation with MC32/SCT32 arrays before/after a
-changed weight and restoration. The two-node production job remains held until
-all four cases pass without skips. This is not a throughput benchmark or
-evidence of completed terminal training.
+also passed the three kernel cases but failed during server construction: the
+config was missing the required `get_scaled_act_names()` method. This is fixed
+in the current runtime. Local checks instantiate the config and real column,
+row, and merged-column layers; a regression test loads both fused BF16 shards.
+Real-model GPU publication remains unverified until the next validation passes.
+
+The [BF16 control](configs/prod_4b_dppo_tv_scmc32_bf16.yaml) matches the two-node
+NVFP4 production config, runtime image, MC32 arrays, DPPO-TV, 4K head chunks,
+256 responses/update, and scheduling. Only the run name and inference precision
+arguments differ. The BF16 control launches independently; NVFP4 production
+remains gated on all four validation tests passing without skips.
 
 ## TMax SCT128 run
 

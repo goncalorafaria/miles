@@ -86,3 +86,29 @@ def test_nvfp4_is_accepted_by_serving_cli():
     ServerArgs.add_cli_args(parser)
     args = parser.parse_args(["--model-path", "/local/checkpoint", "--quantization", "nvfp4_dense_online"])
     assert args.quantization == "nvfp4_dense_online"
+
+
+def test_dense_nvfp4_config_constructs_and_loads_fused_bf16_shards():
+    import torch
+    from sglang.srt.layers.linear import MergedColumnParallelLinear
+    from sglang.srt.layers.quantization.nvfp4_dense_online import NvFp4DenseOnlineConfig, NvFp4DenseOnlineLinearMethod
+    from sglang.srt.layers.quantization.unquant import UnquantizedLinearMethod
+
+    config = NvFp4DenseOnlineConfig()
+    assert config.get_scaled_act_names() == []
+    layer = MergedColumnParallelLinear(
+        input_size=336,
+        output_sizes=[80, 80],
+        bias=False,
+        params_dtype=torch.bfloat16,
+        quant_config=config,
+        tp_rank=0,
+        tp_size=1,
+    )
+    assert isinstance(layer.quant_method, NvFp4DenseOnlineLinearMethod)
+    assert not isinstance(layer.quant_method, UnquantizedLinearMethod)
+    gate = torch.full((80, 336), 2.0, dtype=torch.bfloat16)
+    up = torch.full((80, 336), 3.0, dtype=torch.bfloat16)
+    layer.weight.weight_loader(layer.weight, gate, 0)
+    layer.weight.weight_loader(layer.weight, up, 1)
+    torch.testing.assert_close(layer.weight, torch.cat((gate, up)))

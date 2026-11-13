@@ -45,7 +45,7 @@ beaker:
   nodes: 2
   gpus: 8
   shared_memory: 512GiB
-  image: beaker:01M7915NQT51SK6EY03X4E5E2Y
+  image: beaker:01M793QBYA81CQXDHVFBNS2QCN
   gateway_registry: head+sqlite:///weka/oe-adapt-default/gfaria/primebeaker/registries/podman-jupiter128-20261105.sqlite3
   gateway_min_replicas: 64
   keep_last_n_checkpoints: 3
