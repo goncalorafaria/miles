@@ -173,7 +173,15 @@ compared log probabilities of sampled tokens, which can differ across requests.
 The revised test compares token-aligned first-position SCT distributions for the
 same prompt, checks that zeroing the weight changes the distribution, and checks
 restoration within the original 0.002 tolerance. MC32 array checks still run before
-and after each update. Real-model publication remains unverified until this passes.
+and after each update.
+
+The [fifth validation](https://beaker.org/ex/01M794KXY7XJ97FNVB2FMX9Z2Z) passed all
+four tests without skips in 257 seconds on Blackwell. The real 4B test returned
+MC32 and SCT32 arrays before and after both updates. Zeroing the selected actor
+weight changed the first-position top-k values (maximum sorted-value difference
+1.208805); restoring it reproduced the original token-aligned values exactly
+(maximum difference 0). All three independent numerical/CUDA-graph reload cases
+also passed. This validates dense NVFP4 publication, not completed RL training.
 
 The [BF16 control](configs/prod_4b_dppo_tv_scmc32_bf16.yaml) matches the two-node
 NVFP4 production config, runtime image, MC32 arrays, DPPO-TV, 4K head chunks,
@@ -188,9 +196,11 @@ Matched production retries pinned to Miles `d45db5c` and runtime
   Both production configs now use the user-requested `graf/oe-general-agents`
   destination with the existing Beaker credential.
 - [BF16 retry](https://beaker.org/ex/01M794T478A3BXZN89S9TWBP9W):
-  submitted with the corrected tracking destination; training results pending.
-- [NVFP4 publication retry](https://beaker.org/ex/01M794KXY7XJ97FNVB2FMX9Z2Z):
-  scheduled; the separate two-node NVFP4 run submits only after this passes.
+  started and successfully syncing to `graf/oe-general-agents`; training results pending.
+- [NVFP4 two-node production](https://beaker.org/ex/01M795RG789D5A12C8RPM6BCKN):
+  automatically submitted after the saved XML confirmed all four validation
+  cases passed without skips; both 8-GPU replicas scheduled, urgent/preemptible,
+  with no minimum runtime. Training results remain pending.
 
 
 ## TMax SCT128 run
