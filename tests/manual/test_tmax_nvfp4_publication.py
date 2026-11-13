@@ -134,21 +134,26 @@ def test_real_model_publication():
             assert np.isfinite(values).all() and (values <= 0).all()
             assert (indices >= 0).all()
             print({"mode": mode, "shape": meta["output_top_logprobs_shape"]}, flush=True)
-            return result
+            # The first position has the same prompt across requests. Later
+            # positions depend on sampled tokens and cannot test restoration.
+            return indices.reshape(8, 32)[0], values.reshape(8, 32)[0]
 
-        before = generate("mc")
+        generate("mc")
+        before_ids, before_values = generate("topk")
         for factor in (0.0, 1.0):
             _check_result(engine.begin_weight_update())
             _check_result(engine.update_weights_from_tensor([(name, original * factor)]))
             _check_result(engine.end_weight_update())
-            after = generate("mc")
-            before_lp = before["meta_info"]["output_token_logprobs"][0][0]
-            after_lp = after["meta_info"]["output_token_logprobs"][0][0]
-            assert np.isfinite(after_lp)
+            generate("mc")
+            after_ids, after_values = generate("topk")
+            max_delta = float(np.max(np.abs(after_values - before_values)))
+            print({"weight_factor": factor, "first_position_topk_max_delta": max_delta}, flush=True)
             if factor == 0:
-                assert abs(after_lp - before_lp) > 1e-5
+                assert not np.array_equal(after_ids, before_ids) or max_delta > 1e-5
             else:
-                assert after_lp == pytest.approx(before_lp, abs=2e-3)
-        generate("topk")
+                # Compare the same token IDs, allowing harmless reordering of ties.
+                before_order, after_order = np.argsort(before_ids), np.argsort(after_ids)
+                np.testing.assert_array_equal(after_ids[after_order], before_ids[before_order])
+                np.testing.assert_allclose(after_values[after_order], before_values[before_order], atol=2e-3, rtol=0)
     finally:
         engine.shutdown()
