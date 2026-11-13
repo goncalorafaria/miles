@@ -164,7 +164,16 @@ also passed the three kernel cases but failed during server construction: the
 config was missing the required `get_scaled_act_names()` method. This is fixed
 in the current runtime. Local checks instantiate the config and real column,
 row, and merged-column layers; a regression test loads both fused BF16 shards.
-Real-model GPU publication remains unverified until the next validation passes.
+The third validation loaded the real model and captured CUDA graphs, then failed
+because the test's weight suffix also matched an unused MTP weight. The fixture
+now selects the actor weight explicitly; MTP remains disabled. The
+[fourth validation](https://beaker.org/ex/01M794707AVS3P3HFTFWM9W0E5) completed
+MC32 array generation before and after weight updates, but its restoration check
+compared log probabilities of sampled tokens, which can differ across requests.
+The revised test compares token-aligned first-position SCT distributions for the
+same prompt, checks that zeroing the weight changes the distribution, and checks
+restoration within the original 0.002 tolerance. MC32 array checks still run before
+and after each update. Real-model publication remains unverified until this passes.
 
 The [BF16 control](configs/prod_4b_dppo_tv_scmc32_bf16.yaml) matches the two-node
 NVFP4 production config, runtime image, MC32 arrays, DPPO-TV, 4K head chunks,
@@ -175,8 +184,8 @@ remains gated on all four validation tests passing without skips.
 Matched runs pinned to Miles `924bc88` and runtime
 `01M793QBYA81CQXDHVFBNS2QCN`:
 - [BF16 two-node production](https://beaker.org/ex/01M793SQKE64ADTNCJQ1K5EQHN):
-  both replicas scheduled; training results pending.
-- [NVFP4 publication retry](https://beaker.org/ex/01M793T84JXFXCJHKJFXJ1BND3):
+  both replicas started; the TMax training entrypoint launched, with training results pending.
+- [NVFP4 publication retry](https://beaker.org/ex/01M794KXY7XJ97FNVB2FMX9Z2Z):
   scheduled; the separate two-node NVFP4 run submits only after this passes.
 
 
