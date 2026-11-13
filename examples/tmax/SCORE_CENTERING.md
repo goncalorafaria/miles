@@ -289,3 +289,21 @@ Both retain two 8-GPU nodes, MC32 arrays, DPPO-TV, 4K head chunks, 256 responses
 per update, `graf/oe-general-agents`, urgent/preemptible priority, and no minimum
 runtime. Submission does not establish completed training or fix verification
 through a real rollout; those results remain pending.
+
+
+Live verification at 2026-11-13 01:16 UTC: the NVFP4 production run completed
+initial distributed publication to all eight engines and served real terminal
+agent requests through `miles.router.router`. A read-only GET of one live session
+validated seven recorded turns (580 generated positions): `output_score_mode`
+was `mc32`, all arrays had shape `[tokens, 32]`, int32 IDs and float32 values,
+exact byte lengths, nonnegative IDs and finite nonpositive log probabilities.
+The metadata-only evidence is stored in
+`validation/miles-router-production-20261113/live-session-array-check.json` under
+the parent TMax workspace. This establishes real routed payload preservation,
+not completion of a training update.
+
+BF16's first router-corrected allocation was preempted before startup by an
+allocated workload. Beaker automatically created replacement jobs under the
+same experiment; they remain queued for two-node capacity. The NVFP4 run remains
+active; an isolated router HTTP read error was followed by successful responses.
+BF16 recovery and completed training updates are still unverified.
