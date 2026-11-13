@@ -261,3 +261,31 @@ JUnit report, server log and success marker. The shared trainer model retains
 updates between modes while the rollout server keeps its initial weights, so
 this also exercises scoring against a stale rollout policy. It does not cover
 Megatron parallelism, terminal rewards, weight publication or NVFP4 inference.
+
+
+## Production router correction
+
+The BF16 run `01M794T478A3BXZN89S9TWBP9W` reached terminal rollouts but failed
+when session collection required `output_score_mode=mc32`. A local mock-backend
+probe of the installed SGLang router reproduced silent removal of
+`score_centering_samples` and `array_output_logprobs` from chat requests. Native
+NVFP4 publication validation bypassed this router and remains valid for its
+stated scope. The pending NVFP4 run `01M795RG789D5A12C8RPM6BCKN` was stopped
+before execution because it shared this transport defect.
+
+Both production configs now select the existing `--use-miles-router`, which
+preserves request fields and packed array metadata. This changes routing from
+the SGLang token-based router to the Miles router. The response JSON is
+reserialized, but base64 array payloads and their types/shapes remain intact.
+Transport regressions cover SCT and MC at K=32/64/128 through the actual Miles
+ASGI proxy and a mock backend; the combined config/session suite passed 29 tests
+with one existing unconfigured production variant skipped.
+
+Matched retries pin Miles `059ccbb` and the unchanged validated runtime:
+- [BF16](https://beaker.org/ex/01M796A9XFH5MBZPSGZQ22VV94)
+- [NVFP4](https://beaker.org/ex/01M796AARJHZ82HS9WPJ6YGRBT)
+
+Both retain two 8-GPU nodes, MC32 arrays, DPPO-TV, 4K head chunks, 256 responses
+per update, `graf/oe-general-agents`, urgent/preemptible priority, and no minimum
+runtime. Submission does not establish completed training or fix verification
+through a real rollout; those results remain pending.
