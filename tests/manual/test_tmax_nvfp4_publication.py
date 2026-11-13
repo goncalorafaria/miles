@@ -87,7 +87,7 @@ def test_real_model_publication():
         max_running_requests=4,
         max_total_tokens=4096,
         max_mamba_cache_size=8,
-        cuda_graph_max_bs=4,
+        cuda_graph_max_bs_decode=4,
         attention_backend="triton",
         sampling_backend="pytorch",
         disable_flashinfer_autotune=True,

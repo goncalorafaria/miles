@@ -149,16 +149,22 @@ already-quantized checkpoint inputs.
 
 [sglang_nvfp4_dense_online.patch](../../docker/patch/sglang_nvfp4_dense_online.patch)
 is included in both Docker build paths. Runtime `01M7915NQT51SK6EY03X4E5E2Y`
-contains it and the score-array patch on the unchanged SGLang base. The
-validation image `01M790ZWG23G2RDQCAQ69B862Y` has identical kernels; the final
-image additionally registers the method in the CLI allowlist.
-The Blackwell validation is
-[01M7911C7QQ3NP1Z88T3YF1AW8](https://beaker.org/ex/01M7911C7QQ3NP1Z88T3YF1AW8):
-independent dequantized-reference GEMM checks, repeated CUDA-graph weight
-refreshes, and real 4B generation with MC32/SCT32 arrays before/after a changed
-weight and restoration. **Submitted; results pending.** The two-node production
-job is held until this validation passes. This is not a throughput benchmark
-or evidence of completed terminal training.
+contains it and the score-array patch on the unchanged SGLang base.
+The first Blackwell validation,
+[01M7911C7QQ3NP1Z88T3YF1AW8](https://beaker.org/ex/01M7911C7QQ3NP1Z88T3YF1AW8),
+passed all three independent dequantized-reference GEMM and repeated CUDA-graph
+reload cases. Its real 4B test failed before engine startup because the test
+used the obsolete `cuda_graph_max_bs` keyword. The test now uses
+`cuda_graph_max_bs_decode`; all 13 Engine keywords were checked against the
+pinned runtime schema.
+
+The corrected validation is
+[01M7939AV1GJVQBCZY4DEKSNRQ](https://beaker.org/ex/01M7939AV1GJVQBCZY4DEKSNRQ),
+using the final runtime image. **Submitted; results pending.** It reruns all
+four cases, including real 4B generation with MC32/SCT32 arrays before/after a
+changed weight and restoration. The two-node production job remains held until
+all four cases pass without skips. This is not a throughput benchmark or
+evidence of completed terminal training.
 
 ## TMax SCT128 run
 
