@@ -172,6 +172,14 @@ NVFP4 production config, runtime image, MC32 arrays, DPPO-TV, 4K head chunks,
 arguments differ. The BF16 control launches independently; NVFP4 production
 remains gated on all four validation tests passing without skips.
 
+Matched runs pinned to Miles `924bc88` and runtime
+`01M793QBYA81CQXDHVFBNS2QCN`:
+- [BF16 two-node production](https://beaker.org/ex/01M793SQKE64ADTNCJQ1K5EQHN):
+  both replicas scheduled; training results pending.
+- [NVFP4 publication retry](https://beaker.org/ex/01M793T84JXFXCJHKJFXJ1BND3):
+  scheduled; the separate two-node NVFP4 run submits only after this passes.
+
+
 ## TMax SCT128 run
 
 The full terminal-RL smoke was submitted as
