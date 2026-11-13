@@ -78,6 +78,15 @@ def test_real_model_publication():
     model = os.environ.get("TMAX_SC_MODEL")
     if not model:
         pytest.skip("TMAX_SC_MODEL is required for the real 4B validation")
+    # Select the actor decoder explicitly; the checkpoint also contains an
+    # MTP layer with the same suffix. Validate the fixture before engine startup.
+    name = "model.language_model.layers.0.mlp.down_proj.weight"
+    candidates = []
+    for path in sorted(Path(model).glob("*.safetensors")):
+        with safe_open(path, framework="pt", device="cpu") as checkpoint:
+            if name in checkpoint.keys():
+                candidates.append(checkpoint.get_tensor(name))
+    assert len(candidates) == 1, f"Expected one actor weight {name}, found {len(candidates)}"
     engine = Engine(
         model_path=model,
         quantization="nvfp4_dense_online",
@@ -94,15 +103,7 @@ def test_real_model_publication():
         watchdog_timeout=900,
     )
     try:
-        # A down projection is dense, unfused, and materially affects logits.
-        candidates = []
-        for path in sorted(Path(model).glob("*.safetensors")):
-            with safe_open(path, framework="pt", device="cpu") as checkpoint:
-                for name in checkpoint.keys():
-                    if name.endswith("layers.0.mlp.down_proj.weight"):
-                        candidates.append((name, checkpoint.get_tensor(name).cuda()))
-        assert len(candidates) == 1, [name for name, _ in candidates]
-        name, original = candidates[0]
+        original = candidates[0].cuda()
 
         def generate(mode):
             request = GenerateReqInput(
