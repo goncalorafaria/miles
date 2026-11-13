@@ -67,9 +67,11 @@ def test_dppo_cannot_silently_mix_extra_importance_weights(mode):
         validate_score_centering_args(_args(policy_loss_type="dppo_tv", score_centering_is=mode))
 
 
-def test_nvfp4_production_topology_and_scheduling():
-    path = Path(__file__).resolve().parents[4] / "examples/tmax/configs/prod_4b_dppo_tv_scmc32_nvfp4.yaml"
+@pytest.mark.parametrize("precision", ["bf16", "nvfp4"])
+def test_nvfp4_production_topology_and_scheduling(precision):
+    path = Path(__file__).resolve().parents[4] / f"examples/tmax/configs/prod_4b_dppo_tv_scmc32_{precision}.yaml"
     config = yaml.safe_load(path.read_text())
+    assert "--use-miles-router" in shlex.split(config["extra_args"])
     beaker = config["beaker"]
     assert config["num_nodes"] == beaker["nodes"] == 2
     assert config["num_gpus_per_node"] == beaker["gpus"] == 8

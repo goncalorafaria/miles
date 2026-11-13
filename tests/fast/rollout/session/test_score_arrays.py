@@ -1,8 +1,10 @@
 """Array scores survive session-v2 preparation, trimming, tools, and binary sample transport."""
 
 import base64
+import json
 from types import SimpleNamespace
 
+import httpx
 import numpy as np
 import pytest
 import torch
@@ -26,6 +28,8 @@ from miles.rollout.session.samples.codec import (
 )
 from miles.rollout.session.samples.merge import compute_samples_from_openai_records
 from miles.rollout.session.types import SessionRecord
+from miles.router.config import MilesRouterConfig
+from miles.router.router import MilesRouter
 from miles.utils.types import Sample
 
 
@@ -144,3 +148,55 @@ def test_multiturn_array_session_transport(k, mode):
 def test_array_decoder_rejects_wrong_server_contract(change):
     with pytest.raises(ValueError):
         append_rollout_topk_logprobs(Sample(), _meta(32, "mc") | change, 32, estimator="mc", array_output=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["mc", "topk"])
+@pytest.mark.parametrize("k", [32, 64, 128])
+async def test_score_array_request_and_response_survive_miles_router(mode, k):
+    config = make_session_server_config(
+        rollout_top_logprobs_num=k, rollout_score_array=True, score_centering_estimator=mode
+    )
+    tokenizer = SimpleNamespace(resolve_request_args=lambda request, **kwargs: request)
+    prepared = prepare_chat_request({}, tokenizer, config=config, turn_args=None).body
+    body = json.dumps(prepared).encode()
+    response_body = json.dumps({"choices": [{"meta_info": _meta(k, mode)}]}).encode()
+
+    async def backend(request):
+        assert request.url.path == "/v1/chat/completions"
+        assert request.content == body
+        forwarded = json.loads(request.content)
+        assert forwarded["score_centering_samples"] == (k if mode == "mc" else 0)
+        assert forwarded["array_output_logprobs"] is True
+        return httpx.Response(200, content=response_body, headers={"content-type": "application/json"})
+
+    router = MilesRouter(
+        MilesRouterConfig(
+            host="127.0.0.1",
+            port=0,
+            max_connections=8,
+            timeout=10,
+            health_check_interval=60,
+            health_check_failure_threshold=3,
+        )
+    )
+    await router.client.aclose()
+    router.client = httpx.AsyncClient(transport=httpx.MockTransport(backend))
+    router.worker_request_counts["http://backend"] = 0
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=router.app), base_url="http://router"
+        ) as client:
+            response = await client.post(
+                "/v1/chat/completions", content=body, headers={"content-type": "application/json"}
+            )
+        assert response.status_code == 200
+        assert response.json() == json.loads(response_body)
+        sample = Sample()
+        append_rollout_topk_logprobs(
+            sample, response.json()["choices"][0]["meta_info"], k, estimator=mode, array_output=True
+        )
+        assert sample.rollout_topk_token_ids.shape == (2, k)
+        assert sample.rollout_topk_log_probs.dtype == np.float32
+    finally:
+        await router.client.aclose()

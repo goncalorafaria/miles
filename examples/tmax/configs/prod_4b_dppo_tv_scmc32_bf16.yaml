@@ -24,7 +24,8 @@ sandbox_start_concurrency: 64
 start_failure: drop
 save_interval: 5
 hf_snapshot_every: 20
-extra_args: --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
+# The pinned SGLang router drops MC/array fields from chat requests.
+extra_args: --use-miles-router --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
   1800 --loss-type score_centering --score-centering-estimator mc --rollout-score-array
   --rollout-top-logprobs-num 32 --score-centering-is none --score-centering-head-chunk-size
   4096 --log-probs-chunk-size 4096 --sglang-dtype bfloat16
