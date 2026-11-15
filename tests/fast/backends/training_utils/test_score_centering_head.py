@@ -1,6 +1,7 @@
 """Projection chunking must preserve the real loss/gradient and bound saved vocabulary tensors."""
 
 import runpy
+from functools import partial
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -129,8 +130,9 @@ def test_head_chunking_rejects_unsupported_launches(override):
         )
 
 
+@pytest.mark.parametrize("callback_kwargs", [{}, {"non_loss_data": True}])
 @pytest.mark.usefixtures("single_rank")
-def test_megatron_output_processor_captures_tied_head_and_scores_reference():
+def test_megatron_output_processor_captures_tied_head_and_scores_reference(callback_kwargs):
     # Load the lightweight adapter without importing Megatron's CUDA package initializer.
     path = Path(__file__).resolve().parents[4] / "miles/backends/megatron_utils/score_centering_head.py"
     cls = runpy.run_path(str(path))["ChunkedScoreHead"]
@@ -145,9 +147,16 @@ def test_megatron_output_processor_captures_tied_head_and_scores_reference():
     assert adapter.weight is tied_weight
     args = _args()
     tokens = torch.tensor([0, 1, 2, 3, 4, 5, 6])
-    result = adapter.log_probs(
-        states, args=args, unconcat_tokens=[tokens], total_lengths=[7], response_lengths=[5], with_entropy=True
+    callback = partial(
+        adapter.log_probs,
+        args=args,
+        unconcat_tokens=[tokens],
+        total_lengths=[7],
+        response_lengths=[5],
+        with_entropy=True,
     )
+    # Megatron forward_step_calc_loss passes this keyword during collect_non_loss_data.
+    result = callback(states, **callback_kwargs)
     logits = torch.nn.functional.linear(hidden[1:6, 0], tied_weight, layer.bias) / args.rollout_temperature
     lp = logits.log_softmax(-1)
     torch.testing.assert_close(result["log_probs"][0], lp.gather(-1, tokens[2:, None]).squeeze(-1))

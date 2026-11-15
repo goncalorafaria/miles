@@ -12,7 +12,7 @@ max_seq_len: 67584
 rollout_max_response_len: 16384
 max_steps: 64
 filter_zero_std: true
-max_weight_staleness: 4
+max_weight_staleness: 32
 async_max_concurrent_samples: 512
 async_data_buffer_capacity_factor: 4
 tensor_model_parallel_size: 1

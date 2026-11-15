@@ -307,3 +307,14 @@ allocated workload. Beaker automatically created replacement jobs under the
 same experiment; they remain queued for two-node capacity. The NVFP4 run remains
 active; an isolated router HTTP read error was followed by successful responses.
 BF16 recovery and completed training updates are still unverified.
+
+### Megatron forward-only callback correction (2026-11-15)
+
+Both production retries reached trainer log-probability scoring and failed because
+Megatron calls the output callback with `non_loss_data=True`, but
+`ChunkedScoreHead.log_probs` omitted that keyword. The chunked callback now accepts
+and validates it, matching the ordinary log-probability callback. The regression
+test invokes a partially bound callback with Megatron's keyword and compares its
+response log-probabilities and entropy against the dense projection. Chunking and
+loss mathematics are unchanged. New production submissions use the previously
+requested maximum weight staleness of 32.

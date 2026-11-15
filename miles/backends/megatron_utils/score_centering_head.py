@@ -27,9 +27,19 @@ class ChunkedScoreHead:
         )
 
     def log_probs(
-        self, hidden, *, args, unconcat_tokens, total_lengths, response_lengths, max_seq_lens=None, with_entropy=False
+        self,
+        hidden,
+        *,
+        args,
+        unconcat_tokens,
+        total_lengths,
+        response_lengths,
+        max_seq_lens=None,
+        with_entropy=False,
+        non_loss_data: bool = True,
     ):
-        """Reference/actor forward-only scoring uses the same bounded projection."""
+        """Score responses with Megatron's collect_non_loss_data callback contract."""
+        assert non_loss_data
         result = {"log_probs": []}
         if with_entropy:
             result["entropy"] = []
