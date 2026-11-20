@@ -65,6 +65,7 @@ def append_rollout_topk_logprobs(
     sampling_logprobs_mode: str = "selected",
     estimator: str = "topk",
     array_output: bool = False,
+    copy_arrays: bool = True,
 ) -> None:
     """Append compact [response, k] arrays after appending generated tokens.
 
@@ -77,7 +78,7 @@ def append_rollout_topk_logprobs(
         return
     n = len(meta.get("output_token_logprobs") or [])
     if array_output:
-        ids, logps = _decode_candidate_arrays(meta, n, k, estimator)
+        ids, logps = _decode_candidate_arrays(meta, n, k, estimator, copy_arrays=copy_arrays)
         _append_candidate_arrays(sample, ids, logps)
         return
     if estimator == "mc":
@@ -102,7 +103,7 @@ def append_rollout_topk_logprobs(
     _append_candidate_arrays(sample, ids, logps)
 
 
-def _decode_candidate_arrays(meta: Mapping[str, Any], n: int, k: int, estimator: str):
+def _decode_candidate_arrays(meta: Mapping[str, Any], n: int, k: int, estimator: str, *, copy_arrays=True):
     expected_mode = f"mc{k}" if estimator == "mc" else "topk"
     if meta.get("output_score_mode") != expected_mode:
         raise ValueError(f"Expected output_score_mode={expected_mode}; check the patched SGLang image")
@@ -116,8 +117,8 @@ def _decode_candidate_arrays(meta: Mapping[str, Any], n: int, k: int, estimator:
         data = base64.b64decode(meta[key], validate=True)
         if len(data) != n * k * 4:
             raise ValueError(f"Invalid candidate byte length for {key}")
-        # Copy once to writable, contiguous arrays. Later tensor views must not alias immutable bytes.
-        arrays.append(np.frombuffer(data, dtype="<i4" if field == "idx" else "<f4").reshape(n, k).copy())
+        values = np.frombuffer(data, dtype="<i4" if field == "idx" else "<f4").reshape(n, k)
+        arrays.append(values.copy() if copy_arrays else values)
     return arrays
 
 

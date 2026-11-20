@@ -324,3 +324,49 @@ class TestMergeSamples:
         assert merged is t0
         assert merged.tokens == t0.tokens
         assert merged.rollout_routed_experts is not None
+
+
+@pytest.mark.parametrize("k", [32, 64, 128])
+@pytest.mark.parametrize("stop_at", [None, 2])
+def test_score_arrays_single_allocation_matches_pairwise_merge(mock_tokenizer, monkeypatch, k, stop_at):
+    turns = []
+    tokens = [1, 2]
+    for i in range(5):
+        if i:
+            tokens += [90, 91, 92]
+        tokens += [10 + i, 20 + i]
+        sample = make_sample(tokens=list(tokens), response_length=2, loss_mask=[1, 1])
+        sample.rollout_topk_token_ids = numpy.full((2, k), i, dtype=numpy.int32)
+        sample.rollout_topk_log_probs = numpy.full((2, k), -i - 0.5, dtype=numpy.float32)
+        if i == stop_at:
+            sample.status = Sample.Status.TRUNCATED
+        turns.append(sample)
+    expected = turns[0]
+    for sample in turns[1:]:
+        if expected.status != Sample.Status.COMPLETED:
+            break
+        expected = _merge_sample_pair(expected, sample, mock_tokenizer)
+    original = numpy.concatenate
+    concatenations = []
+
+    def tracked(arrays, *args, **kwargs):
+        concatenations.append(sum(a.nbytes for a in arrays))
+        return original(arrays, *args, **kwargs)
+
+    monkeypatch.setattr(numpy, "concatenate", tracked)
+    actual = merge_samples(turns, mock_tokenizer)
+    for field in ("rollout_topk_token_ids", "rollout_topk_log_probs"):
+        numpy.testing.assert_array_equal(getattr(actual, field), getattr(expected, field))
+    assert actual.loss_mask == expected.loss_mask
+    assert actual.tokens == expected.tokens
+    assert concatenations == []
+    assert all(s.rollout_topk_token_ids.shape == (2, k) for s in turns)
+
+
+def test_score_array_merge_rejects_missing_turn(mock_tokenizer):
+    a = make_sample(tokens=[1, 2, 3], response_length=1)
+    b = make_sample(tokens=[1, 2, 3, 4, 5], response_length=1)
+    a.rollout_topk_token_ids = numpy.zeros((1, 32), dtype=numpy.int32)
+    a.rollout_topk_log_probs = numpy.zeros((1, 32), dtype=numpy.float32)
+    with pytest.raises(ValueError, match="matching"):
+        merge_samples([a, b], mock_tokenizer)

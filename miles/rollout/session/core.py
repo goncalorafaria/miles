@@ -5,7 +5,7 @@ HTTP-agnostic: the FastAPI adapter (``sessions.py`` + ``server.py``) turns each 
 - `chat_completions` omits choice `meta_info` from client replies, and choice `logprobs` unless the client's request asked for them, without modifying the stored response; `SessionRecord` retains both for sample collection and `GET /sessions/{id}`.
 - ``chat_completions`` holds the per-session lock for prep and state update but not across the proxy call; ``closing`` re-checks and the ``num_assistant`` check gate concurrent DELETE/chat.
 - ``stream: true`` is served as fake streaming: the backend call stays non-streaming (TITO needs the complete message + meta_info) and the full response is re-rendered as a single SSE chunk plus ``data: [DONE]``. Errors all happen before the SSE body is built, so they keep their real status codes as JSON.
-- ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, synchronously on the loop like the lock-free ``get_session``); deterministic assembly failures return 422 with the assertion text.
+- ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, on a bounded worker pool under the per-session lock); deterministic assembly failures return 422 with the assertion text.
 """
 
 import json
@@ -17,6 +17,7 @@ import orjson
 from starlette.responses import Response
 
 from miles.rollout.generate_utils.sample_utils import merge_samples
+from miles.rollout.session.collection import SessionCollections
 from miles.rollout.session.config import SessionServerConfig
 from miles.rollout.session.errors import (
     SessionNotFoundError,
@@ -71,6 +72,13 @@ def _lcp_len(a: list[int], b: list[int]) -> int:
 def _samples_response(payload: bytes) -> Response:
     """The samples-op reply: one safetensors binary payload."""
     return Response(content=payload, status_code=200, media_type="application/octet-stream")
+
+
+def _packed_samples_response(samples, metadata, *, empty_reason=None, fields=COMPUTED_FIELDS):
+    started = time.monotonic()
+    response = _samples_response(encode_samples(samples, metadata, empty_reason=empty_reason, fields=fields))
+    response.headers["Server-Timing"] = f"collection_pack;dur={(time.monotonic() - started) * 1000:.3f}"
+    return response
 
 
 def _response_to_stream_chunk(response: dict) -> dict:
@@ -210,6 +218,11 @@ class SessionCore:
         self.registry = registry
         self.config = config
         self.instance_id = session_server_instance_id
+        self.collections = SessionCollections(
+            concurrency=config.session_collection_workers,
+            retention_seconds=config.session_collection_retention,
+            expire=self.delete_session,
+        )
         # Derived from pause_generation_mode at server bootstrap; session code
         # must depend on this capability, never on the weight-update mode.
         self.use_addition_r3 = use_addition_r3
@@ -275,19 +288,26 @@ class SessionCore:
             content=_render_json(payload.model_dump(mode="json")), status_code=200, media_type=JSON_MEDIA_TYPE
         )
 
-    async def collect_samples(self, session_id: str, *, max_seq_len: int | None) -> Response:
-        """Assemble training Samples from this session's records.
-
-        Validation failures return 422; unexpected errors propagate.
-        """
+    async def collect_samples(
+        self, session_id: str, *, max_seq_len: int | None, collection_id: str | None = None
+    ) -> Response:
         session = self.registry.get_session(session_id)
+        key = None if collection_id is None else json.dumps([collection_id, max_seq_len], sort_keys=True)
+        return await self.collections.collect(
+            session_id,
+            session,
+            key=key,
+            assemble=lambda: self._assemble_samples(session_id, session, max_seq_len=max_seq_len),
+        )
+
+    def _assemble_samples(self, session_id, session, *, max_seq_len) -> Response:
         metadata = self._session_metadata(session_id, session)
         tokenizer = self.registry.tokenizer
         fields = COMPUTED_FIELDS
         if session.sampling_support_replay:
             fields += ROLLOUT_SAMPLING_MASK_FIELDS
         if not session.records:
-            return _samples_response(encode_samples([], metadata, empty_reason="no_records", fields=fields))
+            return _packed_samples_response([], metadata, empty_reason="no_records", fields=fields)
         try:
             samples = compute_samples_from_openai_records(
                 self.config,
@@ -301,26 +321,24 @@ class SessionCore:
             if max_seq_len is not None:
                 samples = truncate_samples_by_total_tokens(samples, max_seq_len, tokenizer)
             if not samples:
-                return _samples_response(encode_samples([], metadata, empty_reason="all_truncated", fields=fields))
+                return _packed_samples_response([], metadata, empty_reason="all_truncated", fields=fields)
             if self.use_addition_r3:
                 samples = [merge_samples_with_addition_r3(self.config, samples, session.records, tokenizer)]
             else:
                 samples = [merge_samples(samples, tokenizer)]
         except (AssertionError, ValueError) as exc:
             return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
-        return _samples_response(encode_samples(samples, metadata, fields=fields))
+        return _packed_samples_response(samples, metadata, fields=fields)
 
     async def delete_session(self, session_id: str) -> Response:
         session = self.registry.get_session(session_id)
-        if session.closing:
-            raise SessionNotFoundError(f"session not found: session_id={session_id}")
-        session.closing = True
-        # Acquire the lock so an in-flight chat finishes before we drop the session.
-        await session.lock.acquire()
-        try:
+        # A cancelled DELETE must not leave a live session permanently closing.
+        async with session.lock:
+            if session.closing:
+                raise SessionNotFoundError(f"session not found: session_id={session_id}")
+            session.closing = True
             self.registry.remove_session(session_id)
-        finally:
-            session.lock.release()
+            self.collections.acknowledge(session_id)
         return Response(status_code=204)
 
     async def chat_completions(

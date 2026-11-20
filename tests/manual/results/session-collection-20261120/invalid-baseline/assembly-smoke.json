@@ -1,0 +1,100 @@
+{
+  "scope": "Replay real rollout payloads over localhost HTTP in separate server/client processes.\n\nMeasures packing/transfer/decode, not reconstruction of original session trees,\nmodel inference, or Podman. Baseline uses the base commit's HTTP implementation.\n",
+  "base": "cea1943f",
+  "dump": "/weka/gfaria/tmax-score-logprobs/traces/tmax-4b-prod-bf16-mc32-callback-20261115-8h/rollout_data/153.pt",
+  "samples": 256,
+  "nofile_limit": 65536,
+  "assembly_from_recorded_spans": true,
+  "rows": [
+    {
+      "variant": "old",
+      "requests": 16,
+      "completed": 16,
+      "errors": [],
+      "elapsed_s": 1.9668046419974416,
+      "requests_per_s": 8.13502249199024,
+      "end_to_end_s": {
+        "p50": 1.8241876940010116,
+        "p95": 1.9579537230310962,
+        "p99": 1.9590812982758508
+      },
+      "decode_and_validation_s": {
+        "p50": 0.02223819599021226,
+        "p95": 0.050153073330875486,
+        "p99": 0.07505964253796263
+      },
+      "client_loop_lag_s": {
+        "p50": 9.144761599600305e-05,
+        "p95": 0.0018867356400005504,
+        "p99": 0.06330012342659737
+      },
+      "client_loop_lag_max_s": 0.08929504303261637,
+      "payload_bytes": {
+        "p50": 14815175.0,
+        "p95": 17570495.75,
+        "p99": 17674508.75
+      },
+      "server_loop_lag_s": {
+        "p50": 9.933196008205403e-05,
+        "p95": 0.00307092385366559,
+        "p99": 0.017987314034253358
+      },
+      "server_loop_lag_max_s": 1.3895590569637717,
+      "pack_s": {
+        "p50": 0.08322202134877443,
+        "p95": 0.1155287878937088,
+        "p99": 0.1319003662909381
+      },
+      "connections": 16,
+      "packed": 16,
+      "server_peak_rss_mib": 6648.0234375,
+      "client_peak_rss_mib": 6410.96484375,
+      "repeat": 0
+    },
+    {
+      "variant": "new",
+      "requests": 16,
+      "completed": 16,
+      "errors": [],
+      "elapsed_s": 0.8249707580544055,
+      "requests_per_s": 19.394626832269886,
+      "end_to_end_s": {
+        "p50": 0.6065612981328741,
+        "p95": 0.8095782630261965,
+        "p99": 0.8164246782311239
+      },
+      "decode_and_validation_s": {
+        "p50": 0.022949213860556483,
+        "p95": 0.1187662043957971,
+        "p99": 0.14047741441754624
+      },
+      "client_loop_lag_s": {
+        "p50": 0.00016907207202166308,
+        "p95": 0.005837790730874985,
+        "p99": 0.011350235266145323
+      },
+      "client_loop_lag_max_s": 0.021840976905077695,
+      "payload_bytes": {
+        "p50": 14815175.0,
+        "p95": 17570495.75,
+        "p99": 17674508.75
+      },
+      "server_loop_lag_s": {
+        "p50": 0.002725077448412776,
+        "p95": 0.03846976380329579,
+        "p99": 0.043664430219214415
+      },
+      "server_loop_lag_max_s": 0.04522415705025196,
+      "pack_s": {
+        "p50": 0.07696281105745584,
+        "p95": 0.17115185729926452,
+        "p99": 0.19929043472511693
+      },
+      "connections": 16,
+      "packed": 16,
+      "server_peak_rss_mib": 6454.90625,
+      "client_peak_rss_mib": 6296.1640625,
+      "repeat": 0
+    }
+  ]
+}

@@ -1,0 +1,105 @@
+{
+  "scope": "CPU synthetic collection; same-process localhost HTTP, no inference or tools",
+  "array_merge": [
+    {
+      "k": 32,
+      "turns": 32,
+      "generated_tokens": 32768,
+      "pairwise_median_s": 0.03853762708604336,
+      "single_allocation_median_s": 0.009274879936128855
+    },
+    {
+      "k": 128,
+      "turns": 32,
+      "generated_tokens": 32768,
+      "pairwise_median_s": 0.1759541870560497,
+      "single_allocation_median_s": 0.01352531905286014
+    }
+  ],
+  "http": [
+    {
+      "offload": false,
+      "pooled": false,
+      "requests": 512,
+      "tokens": 256,
+      "payload_bytes": 68335,
+      "elapsed_s": 0.47768934699706733,
+      "requests_per_s": 1071.8262888185013,
+      "connections": 512,
+      "request_p50_s": 0.013537424500100315,
+      "request_p95_s": 0.018558202055282892,
+      "loop_lag_p95_s": 0.0032385837333276865,
+      "loop_lag_max_s": 0.00671657582744956
+    },
+    {
+      "offload": false,
+      "pooled": true,
+      "requests": 512,
+      "tokens": 256,
+      "payload_bytes": 68335,
+      "elapsed_s": 0.26429246296174824,
+      "requests_per_s": 1937.2478286454318,
+      "connections": 16,
+      "request_p50_s": 0.007218300481326878,
+      "request_p95_s": 0.00854352549649775,
+      "loop_lag_p95_s": 0.0034831510437652456,
+      "loop_lag_max_s": 0.003825013879686594
+    },
+    {
+      "offload": true,
+      "pooled": true,
+      "requests": 512,
+      "tokens": 256,
+      "payload_bytes": 68335,
+      "elapsed_s": 0.5220445501618087,
+      "requests_per_s": 980.7592088477977,
+      "connections": 16,
+      "request_p50_s": 0.012069927994161844,
+      "request_p95_s": 0.013887482427526266,
+      "loop_lag_p95_s": 0.0007223769836127757,
+      "loop_lag_max_s": 0.11579505110159516
+    },
+    {
+      "offload": false,
+      "pooled": false,
+      "requests": 512,
+      "tokens": 32768,
+      "payload_bytes": 8651529,
+      "elapsed_s": 7.040144375059754,
+      "requests_per_s": 72.72578127996904,
+      "connections": 512,
+      "request_p50_s": 0.18887583445757627,
+      "request_p95_s": 0.37680610360112043,
+      "loop_lag_p95_s": 0.05091510958038271,
+      "loop_lag_max_s": 0.25886904693208634
+    },
+    {
+      "offload": false,
+      "pooled": true,
+      "requests": 512,
+      "tokens": 32768,
+      "payload_bytes": 8651529,
+      "elapsed_s": 6.117825821042061,
+      "requests_per_s": 83.68986221199577,
+      "connections": 16,
+      "request_p50_s": 0.17257237352896482,
+      "request_p95_s": 0.3175852357409894,
+      "loop_lag_p95_s": 0.026699411896988743,
+      "loop_lag_max_s": 0.2394455581717193
+    },
+    {
+      "offload": true,
+      "pooled": true,
+      "requests": 512,
+      "tokens": 32768,
+      "payload_bytes": 8651529,
+      "elapsed_s": 5.659263920970261,
+      "requests_per_s": 90.47112966454822,
+      "connections": 16,
+      "request_p50_s": 0.1655789470532909,
+      "request_p95_s": 0.23810122293652958,
+      "loop_lag_p95_s": 0.011116965527180582,
+      "loop_lag_max_s": 0.02211346815340221
+    }
+  ]
+}

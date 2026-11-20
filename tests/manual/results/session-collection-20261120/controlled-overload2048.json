@@ -1,0 +1,2408 @@
+{
+  "scope": "Replay real rollout payloads over localhost HTTP in separate server/client processes.\n\nMeasures packing/transfer/decode, not reconstruction of original session trees,\nmodel inference, or Podman. Baseline uses the base commit's HTTP implementation.\n",
+  "base": "cea1943f",
+  "dump": "/weka/gfaria/tmax-score-logprobs/traces/tmax-4b-prod-bf16-mc32-callback-20261115-8h/rollout_data/153.pt",
+  "samples": 256,
+  "nofile_limit": 65536,
+  "tcp_backlog": 2048,
+  "actual_client_implementations": true,
+  "validation_outside_timing": true,
+  "assembly_from_recorded_spans": true,
+  "rows": [
+    {
+      "variant": "old",
+      "requests": 2048,
+      "completed": 1734,
+      "errors": [
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.19363431516103,
+          "traceback": "Traceback (most recent call last):\n  File \"/opt/miniconda3/lib/python3.12/asyncio/tasks.py\", line 520, in wait_for\n    return await fut\n           ^^^^^^^^^\n  File \"/tmp/tmpuidsp9vu.py\", line 289, in _post_buffer\n  File \"/weka/gfaria/miles-olmo-core/.venv/lib/python3.12/site-packages/aiohttp/client.py\", line 1727, in __aexit__\n    await self.close()\n  File \"/weka/gfaria/miles-olmo-core/.venv/lib/python3.12/site-packages/aiohttp/client.py\", line 1593, in close\n    await self._connector.close()\n  File \"/weka/gfaria/miles-olmo-core/.venv/lib/python3.12/site-packages/aiohttp/connector.py\", line 1083, in close\n    await super().close(abort_ssl=abort_ssl or self._ssl_shutdown_timeout == 0)\n  File \"/weka/gfaria/miles-olmo-core/.venv/lib/python3.12/site-packages/aiohttp/helpers.py\", line 116, in __await__\n    yield\nasyncio.exceptions.CancelledError\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/weka/gfaria/miles-session-collection/tests/manual/benchmark_recorded_collection.py\", line 214, in one\n    reply = await tracer.collect_samples(Sample(), max_seq_len=None)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/tmp/tmpcm761yf0.py\", line 99, in collect_samples\n  File \"/tmp/tmpuidsp9vu.py\", line 282, in post_buffer_no_retry\n  File \"/opt/miniconda3/lib/python3.12/asyncio/tasks.py\", line 519, in wait_for\n    async with timeouts.timeout(timeout):\n               ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/miniconda3/lib/python3.12/asyncio/timeouts.py\", line 115, in __aexit__\n    raise TimeoutError from exc_val\nTimeoutError\n"
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.6776940310374,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.7009099200368,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.72143001109362,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.8093078150414,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.79156179889105,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.86379181500524,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.82012988696806,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.91792748495936,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.92685024393722,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.91529243299738,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.95641149301082,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.86948247393593,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.97671240614727,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.91176132601686,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.9947386640124,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.98017136892304,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 171.95490193087608,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.00313251791522,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.09317462192848,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.20654124207795,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.0655554770492,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.11388549301773,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.3014416520018,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.14582759002224,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.1673641128,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.14858320495114,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.254543869989,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.22656421991996,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.28226876701228,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.355982640991,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.2057941709645,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.27023982908577,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.4417099650018,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.29049258399755,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.330653085839,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.48414186597802,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.49962259386666,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.50862873182632,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.4500729269348,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.42912263190374,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.38266248907894,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.42898097494617,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.60768598411232,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.45805154694244,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.57451431499794,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.48949051019736,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.56041212799028,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.51876580086537,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.5247445658315,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.53046470391564,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.6509919371456,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.5426808318589,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.69716913392767,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.7222780219745,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.5810077402275,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.5939755619038,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.75353628583252,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.6236179091502,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.63064456614666,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.6403679260984,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.6701466839295,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.67235927283764,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.68374612787738,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.66924306098372,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.80573601811193,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.69952754396945,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.71478052297607,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.72589764208533,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.75377111602575,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.75090915197507,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.78615046013147,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.77119920705445,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.8185541429557,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.92501970403828,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.84861485706642,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.861507788999,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.0337043670006,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.07481430098414,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.0134086450562,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.11545025883242,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.02301046578214,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.1060535949655,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.9901118390262,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.02172428020276,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.00092412997037,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 172.9986585220322,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.025654344121,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.06248907605186,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.06589792412706,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.16166018298827,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.09165013907477,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.21151272696443,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.11579893692397,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.1261688019149,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.13593096309341,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.15089193591848,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.15354959107935,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.28613211214542,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.21182444691658,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.27865057298914,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.34231420909055,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.32928556809202,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.2532789770048,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.29743110202253,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.24371690489352,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.2690666220151,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.34407181292772,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.36154351313598,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.28063194593415,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.34429695201106,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.43421486392617,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.34997560991906,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.3737669121474,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.36220839782618,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.4249179631006,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.37429520790465,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.468706341926,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.49522856692784,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.61480878992006,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.455023227958,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.5272888438776,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.67030617198907,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.5119792148471,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.5633943330031,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.59400136303157,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.662790191127,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.63551508216187,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.63744310406037,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.65704679419287,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.78446761495434,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.6466974101495,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.64157056808472,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.65471397712827,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.68985071405768,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.74046541005373,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.80840780609287,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.8363524300512,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.7791747560259,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.77901538694277,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.7916462009307,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.78291683201678,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.80776171409525,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.85172858997248,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.9329923139885,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.9264526029583,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.9048854308203,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.8520202569198,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.9165888049174,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.87298814603128,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.00686373608187,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.94382402603514,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.90738964104094,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.91909140185453,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.91399778891355,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.0101502770558,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.95064829313196,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.94619852514006,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.9602352050133,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.07981731789187,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 173.9797572460957,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.09676493308507,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.00910516805016,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.00784075888805,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.01945667294785,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.03994101518765,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.08302113995887,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.05477262916975,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.12083697295748,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.2268082802184,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.12195269297808,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.16143159102648,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.15763863595203,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.18442530999891,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.20056091295555,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.26996266609058,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.33580935094506,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.36864471016452,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.288581995992,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.31349933706224,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.3378528940957,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.35330691211857,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.36390571505763,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.41942192497663,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.4226062449161,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.37819163291715,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.41807299805805,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.38766664708965,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.437137942994,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.51341671217233,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.4646769601386,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.4981985730119,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.45406336919405,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.57112537394278,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.67166449106298,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.6146473349072,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.5307503149379,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.6316060880199,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.5078656449914,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.5770280607976,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.54979142989032,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.60802977508865,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.5605751320254,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.72236403590068,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.66401185910217,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.59757737186737,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.5932738520205,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.71903272694908,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.63008258515038,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.80163827887736,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.80973524507135,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.66163225495256,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.72306272108108,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.70828329818323,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.91224056505598,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.89030578592792,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.7481299410574,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.84643114591017,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.77108082198538,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.92185022681952,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.81687060091645,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.9908741938416,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.92271937988698,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.00931228511035,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.00135751906782,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.84036162681878,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.91675366600975,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.05880438094027,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.9043313099537,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.91189952078275,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.11685904907063,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.9797748280689,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.13348950701766,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.995731132105,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.99913245090283,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.1113478599582,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.00494230678305,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.05372919118963,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.02182395290583,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.179960740963,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.09072453994304,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.17908014007844,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.06504031689838,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.08562383800745,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.1309864409268,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.24688094714656,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.27019234304316,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.26479598297738,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 176.21037739003077,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 174.24330131197348,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.20981017895974,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.26026649493724,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.23898859112523,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.1748196000699,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.29948900500312,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.25043776608072,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.3078468190506,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.24141444917768,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.18784195091575,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.3159943439532,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.23707266920246,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.25091767311096,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.2790631239768,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.42161517497152,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.37792537687346,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.26114070881158,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.28624840895645,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.29043011018075,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.35727444593795,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.41468094009906,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.43959488114342,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.32070031296462,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.37723264400847,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.35727571696043,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 176.44790712208487,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.38244916615076,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.35092675499618,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.55050122388639,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.52447643317282,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.39523218013346,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.42166883707978,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.59432414197363,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.54385150503367,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 176.52320328098722,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.48311148304492,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.51694021304138,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.4404765148647,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 176.54971648892388,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.50167054287158,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.58997383294627,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.51646443712525,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.46296038897708,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.53676214208826,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.50078479200602,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.5524116170127,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.58034439198673,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.5662001320161,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.53193035605364,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.51456605503336,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.54931330610998,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.5539563440252,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.56798192486167,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.55294040287845,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.56963879987597,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.5870617099572,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.58467683312483,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.6060741560068,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.59846416604705,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.60492293699645,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.59878131304868,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.6039849750232,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 176.695955978008,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.6136832360644,
+          "traceback": null
+        },
+        {
+          "type": "TimeoutError",
+          "message": "",
+          "phase": "collect_samples",
+          "elapsed_s": 175.603162313113,
+          "traceback": null
+        }
+      ],
+      "elapsed_s": 178.97525646793656,
+      "requests_per_s": 9.68849009757193,
+      "end_to_end_s": {
+        "p50": 167.73499774350785,
+        "p95": 172.06665967841397,
+        "p99": 174.86190974016907
+      },
+      "client_loop_lag_s": {
+        "p50": 0.00012249418534338464,
+        "p95": 0.0019256803486496232,
+        "p99": 0.0068131245579570645
+      },
+      "client_loop_lag_max_s": 30.153614557003603,
+      "candidate_array_bytes": {
+        "p50": 7179776.0,
+        "p95": 16894720.0,
+        "p99": 16914944.0
+      },
+      "workers": 1,
+      "connections": 2048,
+      "packed": 2048,
+      "server_loop_lag_max_s": 89.15190793492832,
+      "server_peak_rss_mib": 36185.359375,
+      "worker_metrics": [
+        {
+          "server_loop_lag_s": {
+            "p50": 0.0001086230669170617,
+            "p95": 0.0008905981830321251,
+            "p99": 0.0030000260658562183
+          },
+          "server_loop_lag_max_s": 89.15190793492832,
+          "pack_s": {
+            "p50": 0.03769389959052205,
+            "p95": 0.11475851519498974,
+            "p99": 0.16075077111367134
+          },
+          "connections": 2048,
+          "packed": 2048,
+          "server_peak_rss_mib": 36185.359375
+        }
+      ],
+      "client_peak_rss_mib": 26409.3203125,
+      "repeat": 0
+    },
+    {
+      "variant": "new",
+      "requests": 2048,
+      "completed": 2048,
+      "errors": [],
+      "elapsed_s": 81.49778848607093,
+      "requests_per_s": 25.129516248775644,
+      "end_to_end_s": {
+        "p50": 40.80150588799734,
+        "p95": 78.25393869959517,
+        "p99": 78.9295844101673
+      },
+      "client_loop_lag_s": {
+        "p50": 0.00016923284158110608,
+        "p95": 0.0030684620887041075,
+        "p99": 0.005482835518196221
+      },
+      "client_loop_lag_max_s": 2.4507847660034896,
+      "candidate_array_bytes": {
+        "p50": 8689408.0,
+        "p95": 16894720.0,
+        "p99": 16914944.0
+      },
+      "workers": 1,
+      "connections": 32,
+      "packed": 2048,
+      "server_loop_lag_max_s": 0.0906283351406455,
+      "server_peak_rss_mib": 7961.69140625,
+      "worker_metrics": [
+        {
+          "server_loop_lag_s": {
+            "p50": 0.00608649792149663,
+            "p95": 0.037373181437142196,
+            "p99": 0.05791436607716605
+          },
+          "server_loop_lag_max_s": 0.0906283351406455,
+          "pack_s": {
+            "p50": 0.058412969461642206,
+            "p95": 0.1834085151320322,
+            "p99": 0.23093010660028068
+          },
+          "connections": 32,
+          "packed": 2048,
+          "server_peak_rss_mib": 7961.69140625
+        }
+      ],
+      "client_peak_rss_mib": 6276.98046875,
+      "repeat": 0
+    },
+    {
+      "variant": "client_only",
+      "requests": 2048,
+      "completed": 2048,
+      "errors": [],
+      "elapsed_s": 86.21916753798723,
+      "requests_per_s": 23.753418856632702,
+      "end_to_end_s": {
+        "p50": 45.17290571855847,
+        "p95": 84.62118947614218,
+        "p99": 85.14624628937571
+      },
+      "client_loop_lag_s": {
+        "p50": 0.0001234432030469178,
+        "p95": 0.004318090369924902,
+        "p99": 0.016598087437450892
+      },
+      "client_loop_lag_max_s": 1.017860618075356,
+      "candidate_array_bytes": {
+        "p50": 8689408.0,
+        "p95": 16894720.0,
+        "p99": 16914944.0
+      },
+      "workers": 1,
+      "connections": 32,
+      "packed": 2048,
+      "server_loop_lag_max_s": 2.191421806002036,
+      "server_peak_rss_mib": 7240.99609375,
+      "worker_metrics": [
+        {
+          "server_loop_lag_s": {
+            "p50": 0.0007555424282327293,
+            "p95": 1.0036340041831127,
+            "p99": 1.6660886232159098
+          },
+          "server_loop_lag_max_s": 2.191421806002036,
+          "pack_s": {
+            "p50": 0.032327728578820825,
+            "p95": 0.09038686797721311,
+            "p99": 0.11082611927529795
+          },
+          "connections": 32,
+          "packed": 2048,
+          "server_peak_rss_mib": 7240.99609375
+        }
+      ],
+      "client_peak_rss_mib": 6897.234375,
+      "repeat": 0
+    },
+    {
+      "variant": "server_only",
+      "requests": 2048,
+      "completed": 2048,
+      "errors": [],
+      "elapsed_s": 102.21363105787896,
+      "requests_per_s": 20.03646655347084,
+      "end_to_end_s": {
+        "p50": 57.341503014438786,
+        "p95": 96.4158230428351,
+        "p99": 96.88238038755254
+      },
+      "client_loop_lag_s": {
+        "p50": 0.0001451630424708127,
+        "p95": 0.0031238608807325342,
+        "p99": 0.006512526255100943
+      },
+      "client_loop_lag_max_s": 5.558476622104645,
+      "candidate_array_bytes": {
+        "p50": 8689408.0,
+        "p95": 16894720.0,
+        "p99": 16914944.0
+      },
+      "workers": 1,
+      "connections": 2048,
+      "packed": 2048,
+      "server_loop_lag_max_s": 1.3053088699281217,
+      "server_peak_rss_mib": 8147.6328125,
+      "worker_metrics": [
+        {
+          "server_loop_lag_s": {
+            "p50": 0.001074214121326804,
+            "p95": 0.012869986873120073,
+            "p99": 0.02494034479837868
+          },
+          "server_loop_lag_max_s": 1.3053088699281217,
+          "pack_s": {
+            "p50": 0.07418879098258913,
+            "p95": 0.23476110657211385,
+            "p99": 0.3083127649850212
+          },
+          "connections": 2048,
+          "packed": 2048,
+          "server_peak_rss_mib": 8147.6328125
+        }
+      ],
+      "client_peak_rss_mib": 6318.84375,
+      "repeat": 0
+    }
+  ]
+}

@@ -273,54 +273,66 @@ async def wait_http_ok(url: str, *, json_payload=None, timeout: float = 180.0, r
             await asyncio.sleep(5)
 
 
-async def post_buffer_no_retry(url: str, payload: dict, *, timeout: float) -> np.ndarray:
+async def post_buffer_no_retry(url: str, payload: dict, *, timeout: float, client=None) -> np.ndarray:
     """POST once and return a writable buffer; bound the whole operation by timeout.
 
     Plain HTTP only. Transport failures remain httpx.TransportError for the rollout
     abort handler; non-2xx responses raise RuntimeError carrying the response body.
     """
-    return await asyncio.wait_for(_post_buffer(url, payload), timeout=timeout)
+    return await asyncio.wait_for(_post_buffer(url, payload, client=client), timeout=timeout)
 
 
-async def _post_buffer(url: str, payload: dict) -> np.ndarray:
+async def _post_buffer(url: str, payload: dict, *, client=None) -> np.ndarray:
     if urllib.parse.urlsplit(url).scheme != "http":
         raise ValueError(f"post_buffer_no_retry supports http:// only, got {url}")
-    try:
+    if client is None:
         async with aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=None),
             auto_decompress=False,
             skip_auto_headers={"Accept-Encoding"},
             cookie_jar=aiohttp.DummyCookieJar(),
-        ) as client:
-            async with client.post(
-                url, json=payload, headers={"Connection": "close"}, allow_redirects=False
-            ) as response:
-                if not (200 <= response.status < 300):
-                    body = (await response.read()).decode(errors="replace")
-                    raise RuntimeError(f"POST {url} failed with {response.status}: {body}")
-                length = response.content_length
-                if length is None:
-                    raise httpx.RemoteProtocolError("reply without Content-Length")
-                # Private mmap avoids numpy huge-page compaction; prefault on a worker keeps page
-                # faults out of the event-loop copy into the reply buffer. mmap rejects length 0.
-                try:
-                    mapping = await asyncio.to_thread(
-                        mmap.mmap,
-                        -1,
-                        max(length, 1),
-                        flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS | getattr(mmap, "MAP_POPULATE", 0),
-                    )
-                except (OSError, OverflowError) as exc:
-                    raise httpx.ReadError(f"cannot allocate reply buffer for Content-Length {length}") from exc
-                reply = np.frombuffer(mapping, dtype=np.uint8)[:length]
-                view = memoryview(reply)
-                filled = 0
-                async for chunk in response.content.iter_any():
-                    view[filled : filled + len(chunk)] = chunk
-                    filled += len(chunk)
-                if filled != length:
-                    raise httpx.ReadError(f"connection closed after {filled} of {length} body bytes")
-                return reply
+        ) as owned_client:
+            return await _post_buffer(url, payload, client=owned_client)
+    started = time.monotonic()
+    try:
+        async with client.post(url, json=payload, allow_redirects=False) as response:
+            if not (200 <= response.status < 300):
+                body = (await response.read()).decode(errors="replace")
+                raise RuntimeError(f"POST {url} failed with {response.status}: {body}")
+            headers_received = time.monotonic()
+            length = response.content_length
+            if length is None:
+                raise httpx.RemoteProtocolError("reply without Content-Length")
+            # Private mmap avoids numpy huge-page compaction; prefault on a worker keeps page
+            # faults out of the event-loop copy into the reply buffer. mmap rejects length 0.
+            try:
+                mapping = await asyncio.to_thread(
+                    mmap.mmap,
+                    -1,
+                    max(length, 1),
+                    flags=mmap.MAP_PRIVATE | mmap.MAP_ANONYMOUS | getattr(mmap, "MAP_POPULATE", 0),
+                )
+            except (OSError, OverflowError) as exc:
+                raise httpx.ReadError(f"cannot allocate reply buffer for Content-Length {length}") from exc
+            reply = np.frombuffer(mapping, dtype=np.uint8)[:length]
+            view = memoryview(reply)
+            allocated = time.monotonic()
+            filled = 0
+            async for chunk in response.content.iter_any():
+                view[filled : filled + len(chunk)] = chunk
+                filled += len(chunk)
+            if filled != length:
+                raise httpx.ReadError(f"connection closed after {filled} of {length} body bytes")
+            logger.info(
+                "sample_reply url=%s headers_s=%.6f allocation_s=%.6f body_s=%.6f bytes=%d server_timing=%s",
+                url,
+                headers_received - started,
+                allocated - headers_received,
+                time.monotonic() - allocated,
+                filled,
+                response.headers.get("Server-Timing", ""),
+            )
+            return reply
     except aiohttp.ClientConnectorError as exc:
         raise httpx.ConnectError(str(exc)) from exc
     except aiohttp.ClientError as exc:

@@ -1,6 +1,8 @@
 from copy import deepcopy
-from dataclasses import fields
+from dataclasses import fields, replace
 from typing import Any
+
+import numpy as np
 
 from miles.rollout.generate_utils.rollout_topk_logprobs import merge_rollout_topk_logprobs_field
 from miles.rollout.generate_utils.sampling_mask import merge_sampling_masks
@@ -17,17 +19,39 @@ _REPLAY_FIELDS = (
 
 
 def merge_samples(samples: list[Sample], tokenizer) -> Sample:
-    acc = samples[0]
+    selected = [samples[0]]
     for sample in samples[1:]:
-        # Only a COMPLETED turn can be extended by a later turn; if an
-        # intermediate turn truncated, the trajectory ends there.
-        # TODO (shi.dong): figure out how in-turn truncation should be handled.
-        if acc.status != Sample.Status.COMPLETED:
+        if selected[-1].status != Sample.Status.COMPLETED or _introduces_replay_gap(selected[-1], sample):
             break
-        # Replay metadata must be complete through the merged prefix.
-        if _introduces_replay_gap(acc, sample):
-            break
+        selected.append(sample)
+    if len(selected) == 1:
+        return selected[0]
+    score_fields = ("rollout_topk_token_ids", "rollout_topk_log_probs")
+    has_scores = any(getattr(sample, field) is not None for sample in selected for field in score_fields)
+    if has_scores:
+        for sample in selected:
+            sample.validate()
+        for field in score_fields:
+            arrays = [getattr(sample, field) for sample in selected]
+            if any(a is None for a in arrays) or len({a.shape[1] for a in arrays}) != 1:
+                raise ValueError(f"Both turns must carry matching {field} for rollout top-k logprobs collection")
+        # Keep the existing merge/validation contracts, but do not copy an
+        # ever-growing [tokens, K] prefix on every turn.
+        turns = [replace(sample, rollout_topk_token_ids=None, rollout_topk_log_probs=None) for sample in selected]
+    else:
+        turns = selected
+    acc = turns[0]
+    for sample in turns[1:]:
         acc = _merge_sample_pair(acc, sample, tokenizer=tokenizer)
+    if has_scores:
+        start = len(selected[0].tokens) - selected[0].response_length
+        for field, fill in zip(score_fields, (-1, -np.inf), strict=True):
+            first = getattr(selected[0], field)
+            merged = np.full((acc.response_length, first.shape[1]), fill, dtype=first.dtype)
+            for sample in selected:
+                offset = len(sample.tokens) - sample.response_length - start
+                merged[offset : offset + sample.response_length] = getattr(sample, field)
+            setattr(acc, field, merged)
     return acc
 
 

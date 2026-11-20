@@ -1,3 +1,4 @@
+import json
 import logging
 import time
 from copy import deepcopy
@@ -10,14 +11,14 @@ from miles.rollout.session.core import (
     ProxyRequest,
     SessionCore,
     _chat_client_response,
+    _packed_samples_response,
     _render_json,
-    _samples_response,
     extract_completion,
     proxy_result_to_response,
 )
 from miles.rollout.session.errors import SessionNotFoundError, TokenizationError
 from miles.rollout.session.request_args import filter_turn_args, parse_chat_request
-from miles.rollout.session.samples.codec import COMPUTED_FIELDS_V2, ROLLOUT_SAMPLING_MASK_FIELDS, encode_samples
+from miles.rollout.session.samples.codec import COMPUTED_FIELDS_V2, ROLLOUT_SAMPLING_MASK_FIELDS
 from miles.rollout.session.types import GetSessionResponse, SessionRecord
 from miles.rollout.session.v2.metrics import SESSION_ROLLOUT_METRICS_KEY, build_session_rollout_metrics
 from miles.rollout.session.v2.session_state import (
@@ -76,16 +77,27 @@ class SessionCoreV2(SessionCore):
         )
 
     async def collect_samples(
-        self, session_id: str, *, max_seq_len: int | None, agent_metadata: dict | None = None
+        self,
+        session_id: str,
+        *,
+        max_seq_len: int | None,
+        agent_metadata: dict | None = None,
+        collection_id: str | None = None,
     ) -> Response:
-        """Samples op: assemble one raw sample per leaf, then run the
-        pick/post-process hook pipeline and encode the result.
-
-        Synchronous on the server loop (no await), so the session read cannot
-        interleave with chat commits. Deterministic assembly/hook failures map
-        to 422; unknown exceptions propagate.
-        """
         session = self.registry.get_session(session_id)
+        key = (
+            None if collection_id is None else json.dumps([collection_id, max_seq_len, agent_metadata], sort_keys=True)
+        )
+        return await self.collections.collect(
+            session_id,
+            session,
+            key=key,
+            assemble=lambda: self._assemble_samples(
+                session_id, session, max_seq_len=max_seq_len, agent_metadata=agent_metadata
+            ),
+        )
+
+    def _assemble_samples(self, session_id, session, *, max_seq_len, agent_metadata=None) -> Response:
         metadata = self._session_metadata(session_id, session)
         fields = COMPUTED_FIELDS_V2
         if session.sampling_support_replay:
@@ -93,7 +105,7 @@ class SessionCoreV2(SessionCore):
         if agent_metadata is not None:
             metadata["agent"] = agent_metadata
         if not session.tree.nodes:
-            return _samples_response(encode_samples([], metadata, empty_reason="no_records", fields=fields))
+            return _packed_samples_response([], metadata, empty_reason="no_records", fields=fields)
 
         try:
             material = build_leaf_material(
@@ -110,7 +122,7 @@ class SessionCoreV2(SessionCore):
         except (AssertionError, ValueError) as exc:
             return Response(content=str(exc).encode(), status_code=422, media_type="text/plain")
         if not material:
-            return _samples_response(encode_samples([], metadata, empty_reason="all_truncated", fields=fields))
+            return _packed_samples_response([], metadata, empty_reason="all_truncated", fields=fields)
 
         # Hook lane: a policy bug is a deterministic 422 carrying the hook's
         # identity, never a masked 500 (server death stays loud).
@@ -130,12 +142,12 @@ class SessionCoreV2(SessionCore):
             )
             return Response(content=body.encode(), status_code=422, media_type="text/plain")
         if not samples:
-            return _samples_response(encode_samples([], metadata, empty_reason="all_truncated", fields=fields))
+            return _packed_samples_response([], metadata, empty_reason="all_truncated", fields=fields)
         # Hooks may inspect or mutate session metadata, so publish the
         # authoritative server-owned value only at the wire boundary.
         if self.config.sglang_speculative_algorithm is not None:
             metadata[SESSION_ROLLOUT_METRICS_KEY] = build_session_rollout_metrics(session_id, session.tree.nodes)
-        return _samples_response(encode_samples(samples, metadata, fields=fields))
+        return _packed_samples_response(samples, metadata, fields=fields)
 
     async def chat_completions(
         self, session_id: str, *, method: str, query: str, headers: dict, body: bytes

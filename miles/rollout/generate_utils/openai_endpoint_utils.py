@@ -5,8 +5,14 @@ Utilities for the OpenAI endpoint
 import asyncio
 import logging
 import random
+import time
+import uuid
 from argparse import Namespace
 
+import aiohttp
+import httpx
+
+from miles.rollout.generate_utils.collection_transport import collection_transport
 from miles.rollout.generate_utils.sampling_mask import should_return_sampling_mask
 from miles.rollout.session.samples.codec import (
     COMPUTED_FIELDS,
@@ -22,6 +28,7 @@ from miles.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 _SESSION_REQUEST_TIMEOUT = 120
+_SESSION_ACK_TIMEOUT = 10
 
 
 class OpenAIEndpointTracer:
@@ -32,7 +39,10 @@ class OpenAIEndpointTracer:
         session_server_instance_id: str | None = None,
         samples_wire_fields: tuple[str, ...] = COMPUTED_FIELDS,
         agent_router_url: str | None = None,
+        collection_concurrency: int = 32,
     ):
+        self.collection_concurrency = collection_concurrency
+        self.collection_id = uuid.uuid4().hex
         self.router_url = router_url
         self.session_id = session_id
         self.base_url = f"{router_url}/sessions/{session_id}"
@@ -80,6 +90,7 @@ class OpenAIEndpointTracer:
         response = await post(f"{session_url}/sessions", body.model_dump(exclude_none=True), action="post")
         session_id = response["session_id"]
         return OpenAIEndpointTracer(
+            collection_concurrency=getattr(args, "session_collection_concurrency", 32),
             router_url=session_url,
             session_id=session_id,
             session_server_instance_id=instance.instance_id,
@@ -91,28 +102,57 @@ class OpenAIEndpointTracer:
         self, input_sample: Sample, *, max_seq_len: int | None, agent_metadata: dict | None = None
     ) -> SamplesReply:
         """Fetch server-assembled training samples for this session."""
-        body: dict = {"max_seq_len": max_seq_len}
+        body: dict = {"max_seq_len": max_seq_len, "collection_id": self.collection_id}
         if agent_metadata is not None:
             body["metadata"] = agent_metadata
-        try:
-            # Timeouts and transport errors propagate after cleanup, for `generate` to handle.
-            payload = await post_buffer_no_retry(
-                f"{self.base_url}/samples",
-                body,
-                timeout=_SESSION_REQUEST_TIMEOUT,
+        queued = time.monotonic()
+        transport = collection_transport(self.collection_concurrency)
+        # Admission waits do not consume the network deadline, and include
+        # decoding so completed buffers cannot accumulate without a bound.
+        async with transport.admit() as client:
+            admitted = time.monotonic()
+            for attempt in range(3):
+                try:
+                    payload = await post_buffer_no_retry(
+                        f"{self.base_url}/samples",
+                        body,
+                        timeout=_SESSION_REQUEST_TIMEOUT,
+                        client=client,
+                    )
+                    break
+                except (TimeoutError, httpx.TransportError):
+                    if attempt == 2:
+                        logger.error(
+                            "Collection exhausted retries; retaining session %s for recovery", self.session_id
+                        )
+                        raise
+                    await asyncio.sleep(0.5 * (2**attempt) + random.uniform(0, 0.25))
+            received = time.monotonic()
+            result = await asyncio.to_thread(
+                decode_samples_and_merge_input_sample,
+                payload,
+                input_sample,
+                fields=self.samples_wire_fields,
             )
-        finally:
+            logger.info(
+                "session_collection_client session=%s queue_s=%.6f transfer_retry_s=%.6f decode_s=%.6f bytes=%d attempts=%d",
+                self.session_id,
+                admitted - queued,
+                received - admitted,
+                time.monotonic() - received,
+                len(payload),
+                attempt + 1,
+            )
+            # DELETE is the acknowledgement: never delete on a transfer failure,
+            # decode failure, or cancellation. The server retains the exact result.
             try:
-                await asyncio.wait_for(
-                    post(self.base_url, {}, action="delete"),
-                    timeout=_SESSION_REQUEST_TIMEOUT,
-                )
-            except Exception as e:
-                logger.warning(f"Failed to delete session {self.session_id} after collecting samples: {e}")
-
-        return await asyncio.to_thread(
-            decode_samples_and_merge_input_sample,
-            payload,
-            input_sample,
-            fields=self.samples_wire_fields,
-        )
+                async with client.delete(
+                    self.base_url, timeout=aiohttp.ClientTimeout(total=_SESSION_ACK_TIMEOUT)
+                ) as reply:
+                    if reply.status not in (204, 404):
+                        logger.warning(
+                            "Session acknowledgement failed: session=%s status=%d", self.session_id, reply.status
+                        )
+            except (aiohttp.ClientError, TimeoutError) as exc:
+                logger.warning("Session acknowledgement failed: session=%s error=%r", self.session_id, exc)
+            return result

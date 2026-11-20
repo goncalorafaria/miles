@@ -148,6 +148,7 @@ def _compute_sample_from_openai_record(
             sampling_logprobs_mode=record.request.get("sampling_logprobs_mode", "selected"),
             estimator=getattr(args, "score_centering_estimator", "topk"),
             array_output=getattr(args, "rollout_score_array", False),
+            copy_arrays=False,  # Read-only per-turn views; merged arrays / wire payload own the final storage.
         )
     sample.rollout_routed_experts = (
         None if use_addition_r3 else get_routed_experts_from_response(args, choice, len(sample.tokens) - 1)

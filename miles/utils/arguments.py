@@ -2781,6 +2781,24 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Number of session server instances.",
             )
             parser.add_argument(
+                "--session-collection-concurrency",
+                type=int,
+                default=32,
+                help="Maximum admitted sample collections per rollout executor (positive).",
+            )
+            parser.add_argument(
+                "--session-collection-workers",
+                type=int,
+                default=2,
+                help="Concurrent sample assembly workers per session server (positive).",
+            )
+            parser.add_argument(
+                "--session-collection-retention",
+                type=float,
+                default=1800,
+                help="Seconds to retain unacknowledged finalized sessions (positive).",
+            )
+            parser.add_argument(
                 "--session-server-ip",
                 type=str,
                 default=None,
@@ -3505,6 +3523,9 @@ def miles_validate_args(args):
 
     if args.recompute_logprobs_via_prefill:
         assert args.true_on_policy_mode, "--recompute-logprobs-via-prefill requires --true-on-policy-mode"
+
+    if getattr(args, "session_collection_concurrency", 32) < 1:
+        raise ValueError("--session-collection-concurrency must be positive")
 
     if args.use_session_server not in (False, True, "v1", "v2"):
         raise ValueError(
