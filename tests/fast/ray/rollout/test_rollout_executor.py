@@ -81,6 +81,7 @@ class TestDispose:
     ) -> None:
         """Shutdown defers only immature losses and never fabricates drops for prefetched output."""
         executor = RolloutExecutor.__new__(RolloutExecutor)
+        executor._diagnostic_writer = None
         executor.use_legacy_rollout_v1 = False
         executor.generate_rollout = None
         executor.eval_generate_rollout = None
@@ -138,6 +139,7 @@ class TestDispose:
         """Out-of-tree rollout hooks may tear down synchronously without returning an awaitable."""
         disposed: list[str] = []
         executor = RolloutExecutor.__new__(RolloutExecutor)
+        executor._diagnostic_writer = None
         executor.use_legacy_rollout_v1 = False
         executor.generate_rollout = _SynchronousDisposable(disposed, "train")
         executor.eval_generate_rollout = _SynchronousDisposable(disposed, "eval")
@@ -158,6 +160,7 @@ class TestDispose:
         """Violations that only mature after the last get would otherwise never be checked."""
         checked: list[Namespace] = []
         executor = RolloutExecutor.__new__(RolloutExecutor)
+        executor._diagnostic_writer = None
         executor.use_legacy_rollout_v1 = False
         executor.generate_rollout = None
         executor.eval_generate_rollout = None
@@ -188,6 +191,7 @@ class TestSetEvalFleetInfo:
         provider = FakeInferenceControllerProvider(controller)
         eval_function = FakeEvalFunction()
         executor = RolloutExecutor.__new__(RolloutExecutor)
+        executor._diagnostic_writer = None
         executor.args = Namespace(
             chat_template_path=None,
             custom_eval_rollout_log_function_path=None,
@@ -286,6 +290,7 @@ def _load_executor_state(directory: Path, *, rollout_id: int) -> dict:
 
 def _make_executor(tmp_path: Path, rollout_fn: _CountingRolloutFn) -> RolloutExecutor:
     executor = RolloutExecutor.__new__(RolloutExecutor)
+    executor._diagnostic_writer = None
     executor.args = make_args(load=str(tmp_path), save=str(tmp_path))
     executor.use_legacy_rollout_v1 = True
     executor.generate_rollout = rollout_fn
@@ -640,3 +645,34 @@ class TestRolloutCheckpointDir:
     def test_every_rollout_gets_its_own_directory(self, tmp_path: Path) -> None:
         """The rollout id names the directory, so two checkpoints never share one."""
         assert compute_rollout_checkpoint_dir(tmp_path, rollout_id=3) == tmp_path / "rollout" / "3"
+
+
+@pytest.mark.asyncio
+async def test_async_diagnostics_yield_only_after_checkpoint_capture(tmp_path, monkeypatch):
+    executor = _make_executor(tmp_path, _CountingRolloutFn())
+    entered, release = asyncio.Event(), asyncio.Event()
+
+    class Writer:
+        async def submit(self, *_args, **_kwargs):
+            entered.set()
+            await release.wait()
+            return {}
+
+    executor._diagnostic_writer = Writer()
+
+    async def generate(**_kwargs):
+        return [Sample(index=7)], {}
+
+    monkeypatch.setattr(executor, "_generate_rollout_data", generate)
+    monkeypatch.setattr(rollout_executor_module, "convert_samples_to_train_data", lambda *_a, **_kw: {})
+    monkeypatch.setattr(rollout_executor_module, "split_train_data_by_dp", lambda *_a: None)
+    monkeypatch.setattr(rollout_executor_module, "log_rollout_preparation", lambda *_a, **_kw: None)
+    task = asyncio.create_task(executor.get(rollout_id=3))
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=5)
+        await executor.save(2)
+        data, _ = _load_executor_state(tmp_path, rollout_id=2)[None, 3]
+        assert [sample.index for sample in data] == [7]
+    finally:
+        release.set()
+        await task

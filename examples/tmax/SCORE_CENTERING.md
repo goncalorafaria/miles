@@ -318,3 +318,60 @@ test invokes a partially bound callback with Megatron's keyword and compares its
 response log-probabilities and entropy against the dense projection. Chunking and
 loss mathematics are unchanged. New production submissions use the previously
 requested maximum weight staleness of 32.
+
+
+## Executor responsiveness with array diagnostics
+
+The FP8 preset enables `--async-rollout-diagnostics`. A single spawned writer
+serializes complete training rollout dumps after the executor has captured the
+batch for checkpoint recovery. One outstanding write is allowed; a subsequent
+submission waits asynchronously, so a slow disk applies backpressure without
+blocking the event loop. Samples and metadata are copied before returning to
+mutable training conversion. Write failures propagate on the next submission or
+shutdown; hard process termination can interrupt an outstanding diagnostic dump.
+Evaluation dumps retain their synchronous behavior. Trainer-side debug dumps are
+not moved by this option.
+
+Rollout artifact serialization uses pickle protocol 5, preserving typed MC/SCT
+arrays while avoiding protocol 2 byte-string expansion. Diagnostic snapshot,
+previous-write and backpressure timings are reported under `rollout/diagnostics/`.
+Checkpoint capture, conversion and object-store handoff are separately reported
+under `rollout/preparation/`. Checkpoint capture still runs atomically on the
+executor loop; this change does not claim that all executor work is nonblocking.
+
+The fully async producer yields between group submissions and completed-group
+processing once an 8 ms budget expires. The existing TMax data buffer already
+drains ready groups directly and retains its staleness and checkpoint semantics.
+Canceled distributed HTTP calls propagate cancellation to their Ray tasks instead
+of leaving generation work queued or running. Confirmed serving-worker death now
+fails initial readiness promptly, ported from Ai2 MILES commit `f5a4e2d`.
+
+Core-specific prepared-batch overlap, prompt tokenization reuse, flat response
+transport, and policy-cache publication are not enabled by this integration. They
+use a different producer/publication contract. In particular, whole-group retries
+must not blindly rerun tool actions, and preparing a future-policy batch must
+preserve the TMax version filter and checkpoint ownership. The existing HTTP
+retry policy is retained.
+
+Reproduce the CPU-only diagnostic benchmark with
+`tests/manual/benchmark_rollout_diagnostics.py --dump <saved-rollout.pt>
+--samples 256 --output <scratch-directory>`. It compares old protocol-2 synchronous
+writes, protocol-5 synchronous writes and the background writer, reports event-loop
+stall and total completion time separately, verifies tokens and candidate arrays,
+and deletes the large generated `.pt` files. This does not measure trainer speed.
+
+
+A single local replay of the retained 256-response MC32 batch measured:
+
+| Writer | Submit/foreground time | Total completion | Maximum loop stall | Artifact size |
+|---|---:|---:|---:|---:|
+| Synchronous protocol 2 | 27.44 s | 27.44 s | 27.44 s | 3.37 GB |
+| Synchronous protocol 5 | 16.83 s | 16.83 s | 16.83 s | 2.38 GB |
+| Background protocol 5 | 8.60 s | 44.54 s | 3.35 s | 2.38 GB |
+
+The background result includes first-process startup and interprocess transfer.
+It improves responsiveness but takes longer to finish the write; copying the full
+batch still consumes CPU and memory. This is one ordered trial on a shared host,
+not a training-speed estimate. Exact saved token and MC-array parity passed.
+Raw measurements are in
+`tests/manual/results/session-collection-20261120/diagnostic-writes-256.json`.

@@ -1,0 +1,28 @@
+[
+  {
+    "mode": "sync_protocol2",
+    "samples": 32,
+    "submit_seconds": 5.2925139928702265,
+    "total_seconds": 5.292517872992903,
+    "max_loop_stall_seconds": 5.292868612110615,
+    "bytes": 629435401
+  },
+  {
+    "mode": "sync_protocol5",
+    "samples": 32,
+    "submit_seconds": 3.266797635005787,
+    "total_seconds": 3.266800375189632,
+    "max_loop_stall_seconds": 3.2669715760368856,
+    "bytes": 440886857
+  },
+  {
+    "mode": "background_protocol5",
+    "samples": 32,
+    "submit_seconds": 1.5249690120108426,
+    "total_seconds": 8.463625974953175,
+    "max_loop_stall_seconds": 0.5267940030992031,
+    "bytes": 440886857,
+    "rollout/diagnostics/backpressure_seconds": 3.1013041734695435e-07,
+    "rollout/diagnostics/snapshot_seconds": 1.5187553770374507
+  }
+]

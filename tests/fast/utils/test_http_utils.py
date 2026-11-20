@@ -812,3 +812,31 @@ class TestInitHttpClientConcurrency:
     def test_no_client_without_gpus_or_snapshot_eval(self, monkeypatch):
         _, client = self._init(monkeypatch, self._args(eval_uses_snapshots=False))
         assert client is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_distributed_post_cancels_remote_work_without_local_retry(monkeypatch):
+    started = asyncio.Event()
+    cancelled = []
+
+    class Ref:
+        def __await__(self):
+            async def wait():
+                started.set()
+                await asyncio.Event().wait()
+
+            return wait().__await__()
+
+    ref = Ref()
+    actor = SimpleNamespace(do_post=SimpleNamespace(remote=lambda *a, **kw: ref))
+    monkeypatch.setattr(http_utils, "_distributed_post_enabled", True)
+    monkeypatch.setattr(http_utils, "_post_actors", [actor])
+    monkeypatch.setattr(http_utils, "_next_actor", lambda: actor)
+    monkeypatch.setattr(ray, "cancel", cancelled.append)
+    monkeypatch.setattr(http_utils, "_rollout_client", lambda: pytest.fail("cancel must not retry locally"))
+    task = asyncio.create_task(http_utils.post("http://unused/generate", {}))
+    await started.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert cancelled == [ref]

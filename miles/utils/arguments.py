@@ -2188,6 +2188,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
         # debug
         def add_debug_arguments(parser):
             parser.add_argument(
+                "--async-rollout-diagnostics",
+                action="store_true",
+                help="Write training rollout dumps in a bounded background process after checkpoint capture.",
+            )
+            parser.add_argument(
                 "--save-debug-rollout-data",
                 type=str,
                 default=None,

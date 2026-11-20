@@ -26,7 +26,7 @@ start_failure: drop
 save_interval: 5
 hf_snapshot_every: 20
 # The pinned SGLang router drops MC/array fields from chat requests.
-extra_args: --use-miles-router --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
+extra_args: --async-rollout-diagnostics --use-miles-router --log-probs-backend fused --distributed-timeout-minutes 120 --sglang-watchdog-timeout
   1800 --loss-type score_centering --score-centering-estimator mc --rollout-score-array
   --rollout-top-logprobs-num 32 --score-centering-is none --score-centering-head-chunk-size
   4096 --log-probs-chunk-size 4096 --sglang-max-prefill-tokens 262144 --sglang-chunked-prefill-size 131072 --sglang-dtype bfloat16

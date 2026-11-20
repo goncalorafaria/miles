@@ -25,6 +25,10 @@ WAIT_CELLS_MAX_DELAY_SECONDS = 5.0
 ABORT_ALL_TIMEOUT_SECONDS = 60.0
 
 
+class _CellsNotReadyError(Exception):
+    """Expected startup polling condition; worker failures must not be retried."""
+
+
 async def create_rollout_servers(
     args,
     context_lock: ContextLock,
@@ -191,16 +195,20 @@ class RolloutServer:
         return [cell for cell in self.server_cells.values() if cell.is_pending_weights_or_serving]
 
     @lock_exempt
-    async def wait_init_expected_num_cells(self, timeout: float = 3600):
+    async def wait_init_expected_num_cells(self, timeout: float = 3600, *, check_worker_failures: bool = False):
         async def _check(remaining_seconds: float) -> None:
             count = self._count_startable_cells()
             if count < self.init_expected_num_cells:
-                raise Exception(f"Only {count}/{self.init_expected_num_cells} cells of {self.model_name} are ready")
+                if check_worker_failures:
+                    await self.engine_provider.check_startup_failure(group_id=self.model_name)
+                raise _CellsNotReadyError(
+                    f"Only {count}/{self.init_expected_num_cells} cells of {self.model_name} are ready"
+                )
 
         await retry_until_deadline(
             _check,
             total_seconds=timeout,
-            retry_on=Exception,
+            retry_on=_CellsNotReadyError,
             initial_delay=WAIT_CELLS_INITIAL_DELAY_SECONDS,
             max_delay=WAIT_CELLS_MAX_DELAY_SECONDS,
             log_fields=dict(op="wait_init_expected_num_cells", model_name=self.model_name),

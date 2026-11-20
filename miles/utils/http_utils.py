@@ -432,7 +432,18 @@ async def post(url, payload, max_retries=60, action="post", headers=None):
         try:
             actor = _next_actor()
             if actor is not None:
-                return await actor.do_post.remote(url, payload, max_retries, action=action, headers=headers)
+                ref = actor.do_post.remote(url, payload, max_retries, action=action, headers=headers)
+                try:
+                    return await ref
+                except asyncio.CancelledError:
+                    # A local timeout alone does not cancel a queued/running Ray call.
+                    import ray
+
+                    try:
+                        ray.cancel(ref)
+                    except Exception as error:
+                        logger.warning("Could not cancel abandoned distributed HTTP call: %s", error)
+                    raise
         except Exception as e:
             logger.info(f"[http_utils] Distributed POST failed, falling back to local: {e} (url={url})")
             # fall through to local

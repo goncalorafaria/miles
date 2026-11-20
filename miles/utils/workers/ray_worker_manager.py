@@ -212,10 +212,12 @@ class _CellManager(Generic[SpecT]):
     actors: list[_BaseActorManager] | None
     generation: int = 0
     liveness_scan_task: asyncio.Task | None = None
+    failure_reason: str | None = None
 
     async def launch_actors(self):
         assert self.actors is None
         self.generation += 1
+        self.failure_reason = None
         scheduling = self.spec.scheduling
         actor_manager_cls = _actor_manager_cls(self.spec, comm_backend=self.manager.comm_backend)
         self.actors = [
@@ -267,6 +269,7 @@ class _CellManager(Generic[SpecT]):
         async with self.manager._membership_lock:
             if self.actors is None or self.generation != generation:
                 return
+            self.failure_reason = f"Workers {dead_worker_names} exited unexpectedly; inspect their startup logs"
             logger.error(
                 f"Cell {self.cell_id} lost workers {dead_worker_names} without being stopped, "
                 f"so the whole cell is torn down and reported as not alive"
@@ -289,6 +292,7 @@ class _CellManager(Generic[SpecT]):
             alive=self.alive and self._all_workers_have_addrs,
             worker_names=[a.name for a in self.actors] if self.actors is not None else [],
             workers_hash=f"pseudo-hash-{self.generation}",
+            failure_reason=self.failure_reason,
             meta=f(WorkerMetaContext(cell_index=self.cell_index)) if (f := self.spec.meta) is not None else {},
         )
 

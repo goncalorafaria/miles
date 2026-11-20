@@ -86,7 +86,7 @@ class InferenceController:
 
         dashboard_hooks.register_router(self.args)
 
-        await self.wait_expected_num_cells()
+        await self.wait_expected_num_cells(check_worker_failures=True)
 
     # TEMPORARY: exists only so a suspend can take this lock, reverted with the weight-update fault tolerance work
     @with_lock
@@ -116,8 +116,23 @@ class InferenceController:
         return self._init_once.is_initialized()
 
     @lock_exempt
-    async def wait_expected_num_cells(self, timeout: float = CELLS_READY_TIMEOUT_SECONDS) -> None:
-        await asyncio.gather(*[srv.wait_init_expected_num_cells(timeout=timeout) for srv in self.servers.values()])
+    async def wait_expected_num_cells(
+        self, timeout: float = CELLS_READY_TIMEOUT_SECONDS, *, check_worker_failures: bool = False
+    ) -> None:
+        # Initial Ray worker death is terminal. Later takeover waits may be
+        # observing a deliberate replacement and keep their existing behavior.
+        kwargs = {"check_worker_failures": True} if check_worker_failures else {}
+        tasks = [
+            asyncio.create_task(srv.wait_init_expected_num_cells(timeout=timeout, **kwargs))
+            for srv in self.servers.values()
+        ]
+        try:
+            await asyncio.gather(*tasks)
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
 
     @with_lock
     async def abort_all(self) -> None:

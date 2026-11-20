@@ -407,3 +407,14 @@ def _compute_passrate_from_samples(args, all_samples: list[Sample]) -> dict[str,
         flat_rewards=flat_rewards,
         group_size=group_size,
     )
+
+
+def log_rollout_preparation(args, rollout_id, metrics, *, trainer_model_id=None):
+    """Attribute executor preparation separately from generation and trainer compute."""
+    values, step_key = namespace_metrics(
+        metrics,
+        trainer_model_id=trainer_model_id,
+        step_name="rollout/step",
+        step=compute_rollout_step(args, rollout_id),
+    )
+    tracking.log(args, values, step_key=step_key)
