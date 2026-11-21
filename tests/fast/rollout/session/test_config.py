@@ -8,6 +8,8 @@ from pydantic import ValidationError
 from miles.rollout.session.config import SessionServerConfig, compute_session_server_config
 
 _ARGS_TO_CONFIG_FIELD = {
+    "session_collection_workers": "session_collection_workers",
+    "session_collection_retention": "session_collection_retention",
     "miles_router_timeout": "timeout",
     "hf_checkpoint": "hf_checkpoint",
     "chat_template_path": "chat_template_path",
@@ -44,6 +46,8 @@ _OPTIONAL_ARGS_ATTRS = (
 )
 
 _DISTINCT_ARGS_VALUES = dict(
+    session_collection_workers=3,
+    session_collection_retention=42.5,
     miles_router_timeout=31.5,
     hf_checkpoint="/fake/model",
     chat_template_path="/fake/chat_template.jinja",
@@ -131,6 +135,8 @@ class TestComputeSessionServerConfig:
 
 
 _COMPLETE_CONFIG_KWARGS = dict(
+    session_collection_workers=2,
+    session_collection_retention=1800,
     host="127.0.0.1",
     port=5001,
     instance_id=None,
@@ -193,11 +199,18 @@ class TestSessionServerConfig:
             SessionServerConfig(**{**_COMPLETE_CONFIG_KWARGS, "use_session_server": value})
 
     @pytest.mark.parametrize("missing", sorted(SessionServerConfig.model_fields))
-    def test_every_field_is_required(self, missing: str):
-        """Omitting any single field must fail, so none can be silently defaulted."""
+    def test_required_fields_and_explicit_compatibility_defaults(self, missing: str):
+        """Only the explicit compatibility fields may default when omitted."""
         kwargs = {name: value for name, value in _COMPLETE_CONFIG_KWARGS.items() if name != missing}
-        with pytest.raises(ValidationError):
-            SessionServerConfig(**kwargs)
+        compatibility_defaults = {
+            "session_collection_workers": 2,
+            "session_collection_retention": 1800,
+        }
+        if missing in compatibility_defaults:
+            assert getattr(SessionServerConfig(**kwargs), missing) == compatibility_defaults[missing]
+        else:
+            with pytest.raises(ValidationError):
+                SessionServerConfig(**kwargs)
 
     def test_unknown_field_is_rejected(self):
         """An unrecognized keyword must fail validation instead of being silently ignored."""

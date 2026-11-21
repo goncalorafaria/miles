@@ -126,7 +126,9 @@ class _RecordingServer:
         self.calls.append(("remove", cell_id))
         del self.server_cells[cell_id]
 
-    async def wait_init_expected_num_cells(self, timeout: float = 3600.0) -> None:
+    async def wait_init_expected_num_cells(
+        self, timeout: float = 3600.0, *, check_worker_failures: bool = False
+    ) -> None:
         if self._cells_gate is not None:
             await self._cells_gate.wait()
         self.waited_init_expected_num_cells += 1

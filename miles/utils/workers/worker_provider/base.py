@@ -16,6 +16,7 @@ class CellInfo(FrozenStrictBaseModel):
     alive: bool
     worker_names: list[str]
     workers_hash: str
+    failure_reason: str | None = None
     meta: dict[str, Any]  # TODO: in k8s native mode, may be provided from pod annotations
 
 
@@ -36,6 +37,14 @@ class BaseWorkerProvider(abc.ABC):
 
     async def watch_cells(self, reconcile: CellReconcileFn) -> StopWatchFn:
         raise NotImplementedError(f"{type(self).__name__} answers addresses, it does not observe cells")
+
+    async def check_startup_failure(self, *, group_id: str) -> None:
+        """Raise for a known terminal worker failure, not a merely pending cell.
+
+        Providers with externally managed replacement retain their normal wait
+        behavior unless they can distinguish a terminal startup failure.
+        """
+        return None
 
     def expected_num_cells(self, *, group_id: str) -> int | None:
         return None

@@ -130,7 +130,7 @@ def save_debug_rollout_data(
 
         # TODO may improve the format
         dump_data = dict(samples=[sample.to_dict() for sample in samples])
-        torch.save(dict(rollout_id=rollout_id, metadata=metadata or {}, **dump_data), path)
+        torch.save(dict(rollout_id=rollout_id, metadata=metadata or {}, **dump_data), path, pickle_protocol=5)
 
 
 def _format_dump_path(path_template: str, *, stem: str) -> Path:

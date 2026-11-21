@@ -9,8 +9,9 @@ from typing import Any, TypeVar
 
 from miles.dashboard import hooks as dashboard_hooks
 from miles.ray.rollout.debug_data import RolloutDataInjectionUtil, load_debug_rollout_data, save_debug_rollout_data
+from miles.ray.rollout.diagnostic_writer import DiagnosticWriter
 from miles.ray.rollout.eval_fleet import EvalFleetInfo, RolloutExecutorEvalFleet
-from miles.ray.rollout.metrics import log_eval_rollout_data, log_eval_skip, log_rollout_data
+from miles.ray.rollout.metrics import log_eval_rollout_data, log_eval_skip, log_rollout_data, log_rollout_preparation
 from miles.ray.rollout.output_snapshotter import _RolloutExecutorOutputSnapshotter
 from miles.ray.rollout.rollout_data_conversion import postprocess_rollout_data
 from miles.ray.rollout.router_manager import resolve_router_addrs, wait_session_server_ready
@@ -87,6 +88,11 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
         self._session_server_provider = session_server_provider
         self._inference_controller_provider = inference_controller_provider
         self._output_snapshotter = _RolloutExecutorOutputSnapshotter(args=args)
+        self._diagnostic_writer = (
+            DiagnosticWriter(args)
+            if getattr(args, "async_rollout_diagnostics", False) and args.save_debug_rollout_data is not None
+            else None
+        )
 
     @init_once
     async def init(self) -> None:
@@ -147,6 +153,13 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
     # -------------------------- lifecycle -----------------------------
 
     async def dispose(self) -> None:
+        try:
+            if self._diagnostic_writer is not None:
+                await self._diagnostic_writer.close()
+        finally:
+            await self._dispose_rollout()
+
+    async def _dispose_rollout(self) -> None:
         if not self.use_legacy_rollout_v1 and self.generate_rollout is not None:
             await maybe_await(self.generate_rollout.dispose())
         if (close := getattr(self.data_source, "close", None)) is not None:
@@ -164,6 +177,7 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
     async def get(self, rollout_id: int, trainer_model_id: str | None = None) -> RolloutDataPack:
         self.last_get_rollout_id_of_model_id[trainer_model_id] = rollout_id
         event_analyzer.run_sample_ownership_analysis(args=self.args)
+        preparation_metrics = {}
         replay = self._output_snapshotter.get(trainer_model_id=trainer_model_id, rollout_id=rollout_id)
         if replay is None:
             generated = await self._generate_rollout_data(rollout_id=rollout_id, trainer_model_id=trainer_model_id)
@@ -171,13 +185,21 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
                 return RolloutDataPack(empty_batch_timeout=True)
             data, metadata = generated
             # No await may sit between the generated batch arriving and its capture: a save in that window
+            capture_started = time.monotonic()
             self._output_snapshotter.capture(
                 trainer_model_id=trainer_model_id, rollout_id=rollout_id, data=data, metadata=metadata
             )
+            preparation_metrics["rollout/preparation/checkpoint_capture_seconds"] = time.monotonic() - capture_started
+            if self._diagnostic_writer is not None:
+                metrics = await self._diagnostic_writer.submit(
+                    data, rollout_id=rollout_id, metadata=metadata, trainer_model_id=trainer_model_id
+                )
+                preparation_metrics.update(metrics)
         else:
             data, metadata = replay.data, replay.metadata
 
         with SampleOwnershipRecorder.suppress_drop_logging() if replay is not None else nullcontext():
+            conversion_started = time.monotonic()
             train_data = convert_samples_to_train_data(
                 self.args,
                 data,
@@ -185,6 +207,8 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
                 custom_convert_samples_to_train_data_func=self.custom_convert_samples_to_train_data_func,
                 custom_reward_post_process_func=self.custom_reward_post_process_func,
             )
+            conversion_seconds = time.monotonic() - conversion_started
+            handoff_started = time.monotonic()
             sample_indices = train_data.get("sample_indices")
             if self.args.delay_split_train_data_by_dp:
                 data_ref = object_store.get_instance().put(value=train_data, value_spec=ROLLOUT_DATA_VALUE_SPEC)
@@ -192,6 +216,19 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
                 data_ref = split_train_data_by_dp(
                     self.args, train_data, self._train_parallel_configs_of_model_id[trainer_model_id]
                 )
+            logger.info(
+                "rollout_batch_preparation rollout_id=%s conversion_s=%.6f handoff_s=%.6f",
+                rollout_id,
+                conversion_seconds,
+                time.monotonic() - handoff_started,
+            )
+            preparation_metrics.update(
+                {
+                    "rollout/preparation/conversion_seconds": conversion_seconds,
+                    "rollout/preparation/handoff_seconds": time.monotonic() - handoff_started,
+                }
+            )
+            log_rollout_preparation(self.args, rollout_id, preparation_metrics, trainer_model_id=trainer_model_id)
             return RolloutDataPack(sample_indices=sample_indices, data_ref=data_ref)
 
     async def _generate_rollout_data(
@@ -208,14 +245,15 @@ class RolloutExecutor(DedicatedRpcLoopWorker):
             data, metadata, metrics = await self._get_rollout_data(
                 rollout_id=rollout_id, trainer_model_id=trainer_model_id
             )
-        save_debug_rollout_data(
-            self.args,
-            data,
-            rollout_id=rollout_id,
-            evaluation=False,
-            metadata=metadata,
-            trainer_model_id=trainer_model_id,
-        )
+        if self._diagnostic_writer is None:
+            save_debug_rollout_data(
+                self.args,
+                data,
+                rollout_id=rollout_id,
+                evaluation=False,
+                metadata=metadata,
+                trainer_model_id=trainer_model_id,
+            )
         log_rollout_data(
             rollout_id, self.args, data, metrics, time.time() - start_time, trainer_model_id=trainer_model_id
         )

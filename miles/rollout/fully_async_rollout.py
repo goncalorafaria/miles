@@ -19,6 +19,7 @@ rollout engines, pausing producer submissions for the duration of the
 import asyncio
 import copy
 import logging
+import time
 from collections import deque
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -175,14 +176,22 @@ class FullyAsyncRolloutFn(BaseRolloutFn):
         active: set[asyncio.Task] = set()
         while True:
             await self._producer_resumed.wait()
+            yield_at = time.monotonic() + 0.008
             while self._scheduler.has_capacity(pending_groups=len(active), group_budget=self._max_in_flight_groups()):
                 active.add(self._submit_one_group())
+                if time.monotonic() >= yield_at:
+                    await asyncio.sleep(0)
+                    await self._producer_resumed.wait()
+                    yield_at = time.monotonic() + 0.008
             done, active = await self._scheduler.wait_for_progress(active)
             for task in done:
                 prompt_group = next(x.prompt_group for x in self._running_tasks if x.task is task)
                 entry = self._collect_group_result(task, prompt_group)
                 await self._output.put(entry)
                 self._running_tasks = [x for x in self._running_tasks if x.task is not task]
+                if time.monotonic() >= yield_at:
+                    await asyncio.sleep(0)
+                    yield_at = time.monotonic() + 0.008
 
     def _collect_group_result(self, task: asyncio.Task, prompt_group: list[Sample]) -> DataBufferInput:
         if not task.cancelled():

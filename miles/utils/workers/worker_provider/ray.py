@@ -56,6 +56,16 @@ class RayWorkerProvider(BaseWorkerProvider):
         )
         return await loop.start(reconcile)
 
+    async def check_startup_failure(self, *, group_id: str) -> None:
+        infos = await self._worker_manager_handle.get_cell_infos.remote(pool_ids=self._watched_pool_ids())
+        failures = [
+            f"{info.cell_id}: {info.failure_reason}"
+            for info in infos.values()
+            if info.meta.get("model_id") == group_id and not info.alive and info.failure_reason is not None
+        ]
+        if failures:
+            raise RuntimeError(f"Serving startup failed for model {group_id!r}: " + "; ".join(failures))
+
     async def _list_alive_cells(self, *, pool_ids: list[str]) -> dict[str, CellInfo]:
         all_infos = await self._worker_manager_handle.get_cell_infos.remote(pool_ids=pool_ids)
         return {cell_id: info for cell_id, info in all_infos.items() if info.alive}

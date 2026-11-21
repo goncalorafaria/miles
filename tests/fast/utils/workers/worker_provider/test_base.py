@@ -75,6 +75,7 @@ class TestCellInfoWireModel:
                 "trainer-engine-actor-00003-00001",
             ],
             "workers_hash": "workers-sha256",
+            "failure_reason": None,
             "meta": {"attempt": 2, "draining": False, "labels": ["trainer", "primary"]},
         }
         assert restored == cell_info

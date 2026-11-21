@@ -2139,3 +2139,38 @@ class TestLifecycle:
         await fn(train_input(rollout_id=0))
 
         assert type(fn._output) is data_buffer.DefaultDataBuffer
+
+
+@pytest.mark.asyncio
+async def test_refill_yields_to_pending_callbacks_after_budget(monkeypatch):
+    from types import SimpleNamespace
+
+    clock = iter(i * 0.01 for i in range(100))
+    monkeypatch.setattr(fully_async, "time", SimpleNamespace(monotonic=lambda: next(clock)))
+    delivered = []
+    submitted = []
+    resumed = asyncio.Event()
+    resumed.set()
+
+    def submit():
+        if submitted:
+            assert delivered == [True], "refill must let completed-response callbacks run"
+        else:
+            asyncio.get_running_loop().call_soon(delivered.append, True)
+        task = asyncio.create_task(asyncio.sleep(0))
+        submitted.append(task)
+        return task
+
+    async def stop(_active):
+        raise asyncio.CancelledError
+
+    producer = SimpleNamespace(
+        _producer_resumed=resumed,
+        _scheduler=SimpleNamespace(has_capacity=lambda **_kw: len(submitted) < 3, wait_for_progress=stop),
+        _max_in_flight_groups=lambda: 3,
+        _submit_one_group=submit,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await fully_async.FullyAsyncRolloutFn._worker_loop(producer)
+    await asyncio.gather(*submitted)
+    assert len(submitted) == 3
