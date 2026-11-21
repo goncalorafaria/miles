@@ -105,8 +105,12 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         if use_v2:
             collect_kwargs["agent_metadata"] = agent_metadata
         try:
-            async with input.state.collection_capacity.admit():
-                result = await tracer.collect_samples(input.sample, **collect_kwargs)
+            collector = getattr(input.state, "collector", None) if not input.evaluation else None
+            if collector is not None:
+                result = await collector.collect(tracer, input.sample, **collect_kwargs)
+            else:
+                async with input.state.collection_capacity.admit():
+                    result = await tracer.collect_samples(input.sample, **collect_kwargs)
         # Costs this sample, not the run; a non-2xx still raises RuntimeError.
         except (TimeoutError, httpx.TransportError) as e:
             collect_failed = True

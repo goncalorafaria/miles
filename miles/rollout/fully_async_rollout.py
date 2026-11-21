@@ -113,6 +113,8 @@ class FullyAsyncRolloutFn(BaseRolloutFn):
                 "the orchestration publishes the restored weight version before the producer starts, or every "
                 "group a checkpoint restored is filtered out as stale"
             )
+            if (collector := getattr(self.state, "collector", None)) is not None:
+                await collector.start()
             self._worker = asyncio.create_task(self._worker_loop())
             self._worker.add_done_callback(self._on_worker_error)
             logger.info("Started fully-async rollout worker")
@@ -122,6 +124,11 @@ class FullyAsyncRolloutFn(BaseRolloutFn):
         if (worker := self._worker) is None:
             return
         await _end_worker(worker)
+        if (collector := getattr(self.state, "collector", None)) is not None:
+            for running in self._running_tasks:
+                running.task.cancel()
+            await asyncio.gather(*(running.task for running in self._running_tasks), return_exceptions=True)
+            await collector.close()
 
     async def _call_eval(self, input: RolloutFnEvalInput) -> RolloutFnOutput:
         if input.generate_state is not None:
@@ -153,6 +160,14 @@ class FullyAsyncRolloutFn(BaseRolloutFn):
             return max(1, x // self.args.n_samples_per_prompt)
         return self.args.rollout_batch_size
 
+    def _has_attempt_capacity(self) -> bool:
+        collector = getattr(self.state, "collector", None)
+        # A reservation covers every sibling until its entire group has reached
+        # the separately bounded output buffer, including completed sibling results.
+        return (
+            collector is None or (len(self._running_tasks) + 1) * self.args.n_samples_per_prompt <= collector.capacity
+        )
+
     def _submit_one_group(self) -> asyncio.Task:
         samples = [self._retry_buffer.popleft()] if self._retry_buffer else self.data_source.get_samples(1)
         stamp_kv_cache_namespace(samples, namespace=self._curr_kv_cache_namespace)
@@ -177,13 +192,20 @@ class FullyAsyncRolloutFn(BaseRolloutFn):
         while True:
             await self._producer_resumed.wait()
             yield_at = time.monotonic() + 0.008
-            while self._scheduler.has_capacity(pending_groups=len(active), group_budget=self._max_in_flight_groups()):
+            while self._has_attempt_capacity() and self._scheduler.has_capacity(
+                pending_groups=len(active), group_budget=self._max_in_flight_groups()
+            ):
                 active.add(self._submit_one_group())
                 if time.monotonic() >= yield_at:
                     await asyncio.sleep(0)
                     await self._producer_resumed.wait()
                     yield_at = time.monotonic() + 0.008
-            done, active = await self._scheduler.wait_for_progress(active)
+            if self._has_attempt_capacity():
+                done, active = await self._scheduler.wait_for_progress(active)
+            else:
+                # Handoff credits cannot create outstanding-attempt capacity.
+                # Wait for a whole group, not an already-set sample wakeup event.
+                done, active = await asyncio.wait(active, return_when=asyncio.FIRST_COMPLETED)
             for task in done:
                 prompt_group = next(x.prompt_group for x in self._running_tasks if x.task is task)
                 entry = self._collect_group_result(task, prompt_group)
