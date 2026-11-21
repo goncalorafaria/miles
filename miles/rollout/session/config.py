@@ -33,6 +33,7 @@ class SessionServerConfig(FrozenStrictBaseModel):
     rollout_top_logprobs_num: int
     rollout_sampling_logprobs_mode: str
     rollout_temperature: float
+    session_collection_processes: bool = False
     session_collection_workers: int = Field(default=2, gt=0)
     session_collection_retention: float = Field(default=1800, gt=0)
     rollout_score_array: bool = False
@@ -43,6 +44,7 @@ def compute_session_server_config(
     args, *, host: str, port: int, instance_id: str | None, backend_url: str
 ) -> SessionServerConfig:
     return SessionServerConfig(
+        session_collection_processes=getattr(args, "session_collection_processes", False),
         session_collection_workers=getattr(args, "session_collection_workers", 2),
         session_collection_retention=getattr(args, "session_collection_retention", 1800),
         host=host,

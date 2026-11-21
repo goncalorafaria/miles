@@ -78,7 +78,12 @@ class SessionServer:
             timeout=self.timeout,
         ) as client:
             self.client = client
-            yield
+            try:
+                yield
+            finally:
+                core = getattr(app.state, "session_core", None)
+                if core is not None and core.collection_process is not None:
+                    await core.collection_process.close()
 
     async def do_proxy(self, request: ProxyRequest, path: str, *, body: bytes, headers: dict) -> dict:
         url = f"{self.backend_url}/{path}"

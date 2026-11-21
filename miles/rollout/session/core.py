@@ -8,6 +8,7 @@ HTTP-agnostic: the FastAPI adapter (``sessions.py`` + ``server.py``) turns each 
 - ``collect_samples`` assembles training Samples from the session's records on the server (compute -> truncate -> merge, on a bounded worker pool under the per-session lock); deterministic assembly failures return 422 with the assertion text.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -18,6 +19,7 @@ from starlette.responses import Response
 
 from miles.rollout.generate_utils.sample_utils import merge_samples
 from miles.rollout.session.collection import SessionCollections
+from miles.rollout.session.collection_process import CollectionProcess
 from miles.rollout.session.config import SessionServerConfig
 from miles.rollout.session.errors import (
     SessionNotFoundError,
@@ -226,6 +228,9 @@ class SessionCore:
         # Derived from pause_generation_mode at server bootstrap; session code
         # must depend on this capability, never on the weight-update mode.
         self.use_addition_r3 = use_addition_r3
+        self.collection_process = (
+            CollectionProcess(config, use_addition_r3=use_addition_r3) if config.session_collection_processes else None
+        )
 
     def _maybe_request_addition_r3(
         self, request_body: dict, checkpoint_token_ids: list[int], prompt_token_ids: list[int]
@@ -297,8 +302,13 @@ class SessionCore:
             session_id,
             session,
             key=key,
-            assemble=lambda: self._assemble_samples(session_id, session, max_seq_len=max_seq_len),
+            assemble=lambda: self._dispatch_assembly(session_id, session, max_seq_len=max_seq_len),
         )
+
+    async def _dispatch_assembly(self, session_id, session, **kwargs):
+        if self.collection_process is not None:
+            return await self.collection_process.assemble(session_id, session, **kwargs)
+        return await asyncio.to_thread(self._assemble_samples, session_id, session, **kwargs)
 
     def _assemble_samples(self, session_id, session, *, max_seq_len) -> Response:
         metadata = self._session_metadata(session_id, session)

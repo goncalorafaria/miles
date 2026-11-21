@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from miles.rollout.session.config import SessionServerConfig, compute_session_server_config
 
 _ARGS_TO_CONFIG_FIELD = {
+    "session_collection_processes": "session_collection_processes",
     "rollout_score_array": "rollout_score_array",
     "score_centering_estimator": "score_centering_estimator",
     "session_collection_workers": "session_collection_workers",
@@ -48,6 +49,7 @@ _OPTIONAL_ARGS_ATTRS = (
 )
 
 _DISTINCT_ARGS_VALUES = dict(
+    session_collection_processes=True,
     rollout_score_array=True,
     score_centering_estimator="mc",
     session_collection_workers=3,
@@ -139,6 +141,7 @@ class TestComputeSessionServerConfig:
 
 
 _COMPLETE_CONFIG_KWARGS = dict(
+    session_collection_processes=False,
     session_collection_workers=2,
     session_collection_retention=1800,
     rollout_score_array=False,
@@ -209,6 +212,7 @@ class TestSessionServerConfig:
         """Only the explicit compatibility fields may default when omitted."""
         kwargs = {name: value for name, value in _COMPLETE_CONFIG_KWARGS.items() if name != missing}
         compatibility_defaults = {
+            "session_collection_processes": False,
             "session_collection_workers": 2,
             "session_collection_retention": 1800,
             "rollout_score_array": False,
