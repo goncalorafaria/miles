@@ -18,6 +18,7 @@ from miles.rollout.base_types import (
     RolloutFnTrainOutput,
     compute_kv_cache_namespace,
 )
+from miles.rollout.collection_capacity import CollectionCapacity, GenerationCredit, current_credit
 from miles.rollout.generate_hub.single_turn import generate
 from miles.rollout.generate_utils.generate_endpoint_utils import policy_uses_routing_key
 from miles.rollout.inference_rollout.compatibility import load_generate_function
@@ -51,6 +52,7 @@ class GenerateState:
 
         self.generate_function = load_generate_function(args.custom_generate_function_path) or generate
 
+        self.collection_capacity = CollectionCapacity(getattr(args, "async_max_pending_collections", 0))
         self.reset()
 
     def reset(self) -> None:
@@ -163,10 +165,15 @@ async def generate_and_rm_group(
         current_sampling_params = sampling_params.copy()
         if getattr(args, "sglang_enable_deterministic_inference", False):
             current_sampling_params["sampling_seed"] = args.rollout_seed + idx
-        task = asyncio.create_task(generate_and_rm(state, sample, current_sampling_params, evaluation=evaluation))
-        if sample_done_callback is not None:
-            # fires on success, exception, and cancellation, so in-flight accounting is conserved
-            task.add_done_callback(lambda _task: sample_done_callback())
+        credit = GenerationCredit(sample_done_callback) if sample_done_callback is not None else None
+        token = current_credit.set(credit)
+        try:
+            task = asyncio.create_task(generate_and_rm(state, sample, current_sampling_params, evaluation=evaluation))
+        finally:
+            current_credit.reset(token)
+        if credit is not None:
+            # Fallback for errors/cancellation or generators without a collection stage.
+            task.add_done_callback(lambda _task, credit=credit: credit.release())
         tasks.append(task)
 
     try:

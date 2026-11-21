@@ -92,7 +92,7 @@ class SessionCoreV2(SessionCore):
             session_id,
             session,
             key=key,
-            assemble=lambda: self._assemble_samples(
+            assemble=lambda: self._dispatch_assembly(
                 session_id, session, max_seq_len=max_seq_len, agent_metadata=agent_metadata
             ),
         )

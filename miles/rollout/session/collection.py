@@ -6,6 +6,7 @@ that lock early. DELETE acknowledges delivery. Unacknowledged results expire.
 """
 
 import asyncio
+import inspect
 import logging
 import time
 from collections.abc import Callable
@@ -55,6 +56,8 @@ class SessionCollections:
                 # This task is shielded from HTTP cancellation. The lock remains
                 # held until the worker stops reading the session.
                 response = await asyncio.to_thread(assemble)
+                if inspect.isawaitable(response):
+                    response = await response
                 elapsed = time.monotonic() - started
                 packing = response.headers.get("Server-Timing", "")
                 response.headers["Server-Timing"] = (

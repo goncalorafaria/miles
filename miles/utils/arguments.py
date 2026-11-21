@@ -941,6 +941,13 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
+                "--async-max-pending-collections",
+                type=int,
+                default=0,
+                help="Bound finished agent sessions collecting samples outside generation credits. "
+                "0 retains the shared limit; requires fully async sample backfill.",
+            )
+            parser.add_argument(
                 "--async-data-buffer-capacity-factor",
                 type=float,
                 default=2.0,
@@ -2783,6 +2790,11 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 help="Maximum admitted sample collections per rollout executor (positive).",
             )
             parser.add_argument(
+                "--session-collection-processes",
+                action="store_true",
+                help="Assemble session samples in spawned processes instead of threads.",
+            )
+            parser.add_argument(
                 "--session-collection-workers",
                 type=int,
                 default=2,
@@ -4041,6 +4053,12 @@ def miles_validate_args(args):
             f"chunk={args.offload_train_disk_chunk_mb}MB, moments={args.stream_optimizer_state_moment_dtype}"
         )
 
+    if args.async_max_pending_collections < 0:
+        raise ValueError("--async-max-pending-collections must be nonnegative")
+    if args.async_max_pending_collections and args.rollout_submission_granularity == "group":
+        raise ValueError("--async-max-pending-collections requires sample submission granularity")
+    if args.async_max_pending_collections and not args.fully_async:
+        raise ValueError("--async-max-pending-collections requires --fully-async")
     if args.async_max_concurrent_samples is not None:
         assert args.async_max_concurrent_samples >= args.n_samples_per_prompt, (
             f"--async-max-concurrent-samples ({args.async_max_concurrent_samples}) must be at least "

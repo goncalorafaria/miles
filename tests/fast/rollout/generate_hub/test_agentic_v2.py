@@ -5,6 +5,7 @@ import pytest
 import miles.rollout.generate_hub.agentic_tool_call as agentic_tool_call
 from miles.ray.rollout.rollout_data_conversion import validate_compact_rollout_ids
 from miles.rollout.base_types import GenerateFnInput
+from miles.rollout.collection_capacity import CollectionCapacity
 from miles.rollout.session.samples.codec import SamplesReply
 from miles.rollout.session.types import SessionServerInstance
 from miles.rollout.session.v2.metrics import SESSION_ROLLOUT_METRICS_KEY
@@ -43,7 +44,7 @@ def _generate_input(*, evaluation=False, sampling_params=None, **args_kwargs) ->
             **args_kwargs,
         }
     )
-    state = SimpleNamespace(args=args)
+    state = SimpleNamespace(args=args, collection_capacity=CollectionCapacity(0))
     sample = Sample(
         group_index=3,
         index=7,

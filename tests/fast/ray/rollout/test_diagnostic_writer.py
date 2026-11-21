@@ -32,29 +32,29 @@ async def test_real_process_snapshot_roundtrip(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_backpressure_yields_and_does_not_submit_a_second_write():
+async def test_busy_writer_drops_before_touching_samples():
     writer = DiagnosticWriter(SimpleNamespace(save_debug_rollout_data="unused", save_debug_trajectory_data=None))
     pending = Future()
     writer._pending = pending
-    waiting = asyncio.create_task(writer.submit([], rollout_id=1, metadata={}, trainer_model_id=None))
-    await asyncio.sleep(0)
-    assert not waiting.done()
+    metrics = await asyncio.wait_for(
+        writer.submit([_MustNotCopy()], rollout_id=1, metadata={}, trainer_model_id=None), timeout=1
+    )
+    assert metrics["rollout/diagnostics/dropped_total"] == 1
+    assert metrics["rollout/diagnostics/skipped"] == 1
     assert writer._pool is None
-    waiting.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await waiting
     assert not pending.cancelled()
     pending.set_result(1.0)
     await writer.close()
 
 
 @pytest.mark.asyncio
-async def test_write_failure_is_not_silently_lost():
+async def test_optional_write_failure_is_logged_without_failing_training(caplog):
     writer = DiagnosticWriter(SimpleNamespace(save_debug_rollout_data="unused", save_debug_trajectory_data=None))
     writer._pending = Future()
     writer._pending.set_exception(OSError("disk full"))
-    with pytest.raises(OSError, match="disk full"):
-        await writer.close()
+    await writer.close()
+    assert "disk full" in caplog.text
+    assert writer._failures == 1
 
 
 class _MustNotCopy:
