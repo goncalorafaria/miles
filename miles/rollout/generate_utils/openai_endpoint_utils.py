@@ -8,6 +8,7 @@ import random
 import time
 import uuid
 from argparse import Namespace
+from functools import partial
 
 import aiohttp
 import httpx
@@ -99,7 +100,14 @@ class OpenAIEndpointTracer:
         )
 
     async def collect_samples(
-        self, input_sample: Sample, *, max_seq_len: int | None, agent_metadata: dict | None = None
+        self,
+        input_sample: Sample,
+        *,
+        max_seq_len: int | None,
+        agent_metadata: dict | None = None,
+        decode_executor=None,
+        acknowledge: bool = True,
+        timings: dict | None = None,
     ) -> SamplesReply:
         """Fetch server-assembled training samples for this session."""
         body: dict = {"max_seq_len": max_seq_len, "collection_id": self.collection_id}
@@ -128,11 +136,28 @@ class OpenAIEndpointTracer:
                         raise
                     await asyncio.sleep(0.5 * (2**attempt) + random.uniform(0, 0.25))
             received = time.monotonic()
-            result = await asyncio.to_thread(
-                decode_samples_and_merge_input_sample,
-                payload,
-                input_sample,
-                fields=self.samples_wire_fields,
+            decode_call = partial(_timed_decode, payload, input_sample, self.samples_wire_fields, received)
+            if decode_executor is None:
+                result, timing = await asyncio.to_thread(decode_call)
+            else:
+                result, timing = await asyncio.get_running_loop().run_in_executor(decode_executor, decode_call)
+            resumed = time.monotonic()
+            if timings is not None:
+                timings.update(
+                    thread_queue_seconds=timing[0],
+                    decode_cpu_seconds=timing[1],
+                    decode_wall_seconds=timing[2],
+                    loop_resume_seconds=resumed - timing[3],
+                    transfer_seconds=received - admitted,
+                    transport_queue_seconds=admitted - queued,
+                )
+            logger.info(
+                "collection_decode session=%s thread_queue_s=%.6f cpu_s=%.6f execute_wall_s=%.6f loop_resume_s=%.6f",
+                self.session_id,
+                timing[0],
+                timing[1],
+                timing[2],
+                resumed - timing[3],
             )
             logger.info(
                 "session_collection_client session=%s queue_s=%.6f transfer_retry_s=%.6f decode_s=%.6f bytes=%d attempts=%d",
@@ -143,16 +168,37 @@ class OpenAIEndpointTracer:
                 len(payload),
                 attempt + 1,
             )
-            # DELETE is the acknowledgement: never delete on a transfer failure,
-            # decode failure, or cancellation. The server retains the exact result.
-            try:
-                async with client.delete(
-                    self.base_url, timeout=aiohttp.ClientTimeout(total=_SESSION_ACK_TIMEOUT)
-                ) as reply:
-                    if reply.status not in (204, 404):
-                        logger.warning(
-                            "Session acknowledgement failed: session=%s status=%d", self.session_id, reply.status
-                        )
-            except (aiohttp.ClientError, TimeoutError) as exc:
-                logger.warning("Session acknowledgement failed: session=%s error=%r", self.session_id, exc)
+            if acknowledge:
+                delete_started = time.monotonic()
+                await self._acknowledge(client)
+                if timings is not None:
+                    timings["delete_seconds"] = time.monotonic() - delete_started
             return result
+
+    async def acknowledge(self):
+        async with collection_transport(self.collection_concurrency).admit() as client:
+            await self._acknowledge(client)
+
+    async def _acknowledge(self, client):
+        started = time.monotonic()
+        try:
+            async with client.delete(
+                self.base_url, timeout=aiohttp.ClientTimeout(total=_SESSION_ACK_TIMEOUT)
+            ) as reply:
+                if reply.status not in (204, 404):
+                    logger.warning(
+                        "Session acknowledgement failed: session=%s status=%d", self.session_id, reply.status
+                    )
+        except (aiohttp.ClientError, TimeoutError) as exc:
+            logger.warning("Session acknowledgement failed: session=%s error=%r", self.session_id, exc)
+        finally:
+            logger.info("collection_delete session=%s seconds=%.6f", self.session_id, time.monotonic() - started)
+
+
+def _timed_decode(payload, input_sample, fields, queued):
+    started = time.monotonic()
+    cpu_started = time.thread_time()
+    result = decode_samples_and_merge_input_sample(payload, input_sample, fields=fields)
+    cpu = time.thread_time() - cpu_started
+    finished = time.monotonic()
+    return result, (started - queued, cpu, finished - started, finished)

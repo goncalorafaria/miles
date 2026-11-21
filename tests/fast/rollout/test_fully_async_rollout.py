@@ -2168,9 +2168,24 @@ async def test_refill_yields_to_pending_callbacks_after_budget(monkeypatch):
         _producer_resumed=resumed,
         _scheduler=SimpleNamespace(has_capacity=lambda **_kw: len(submitted) < 3, wait_for_progress=stop),
         _max_in_flight_groups=lambda: 3,
+        _has_attempt_capacity=lambda: True,
         _submit_one_group=submit,
     )
     with pytest.raises(asyncio.CancelledError):
         await fully_async.FullyAsyncRolloutFn._worker_loop(producer)
     await asyncio.gather(*submitted)
     assert len(submitted) == 3
+
+
+def test_outstanding_budget_keeps_finished_siblings_reserved():
+    from types import SimpleNamespace
+
+    producer = object.__new__(fully_async.FullyAsyncRolloutFn)
+    producer.args = SimpleNamespace(n_samples_per_prompt=32)
+    producer.state = SimpleNamespace(collector=SimpleNamespace(capacity=96))
+    producer._running_tasks = [object(), object()]
+    assert producer._has_attempt_capacity()
+    producer._running_tasks.append(object())
+    assert not producer._has_attempt_capacity()
+    producer._running_tasks.pop()
+    assert producer._has_attempt_capacity()

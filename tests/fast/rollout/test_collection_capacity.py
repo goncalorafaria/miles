@@ -77,3 +77,43 @@ async def test_disabled_handoff_keeps_credit_until_completion():
         assert released == [1]
     finally:
         current_credit.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_both_generation_limits_release_at_handoff_once():
+    from miles.rollout.collection_capacity import agent_finished, generation_permit
+
+    released = []
+    credit = GenerationCredit(lambda: released.append(True))
+    token = current_credit.set(credit)
+    semaphore = asyncio.Semaphore(1)
+    try:
+        async with generation_permit(semaphore):
+            assert semaphore._value == 0
+            agent_finished()
+            agent_finished()
+            assert semaphore._value == 1
+            assert released == [True]
+        credit.release()
+        assert semaphore._value == 1
+        assert released == [True]
+    finally:
+        current_credit.reset(token)
+
+
+@pytest.mark.asyncio
+async def test_cancel_before_generation_permit_does_not_return_unacquired_permit():
+    from miles.rollout.collection_capacity import generation_permit
+
+    semaphore = asyncio.Semaphore(0)
+
+    async def blocked():
+        async with generation_permit(semaphore):
+            raise AssertionError("unreachable")
+
+    task = asyncio.create_task(blocked())
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert semaphore._value == 0

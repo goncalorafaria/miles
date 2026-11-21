@@ -43,3 +43,28 @@ class CollectionCapacity:
                 yield
             finally:
                 self.active -= 1
+
+
+current_generation_permit = ContextVar("generation_permit", default=None)
+
+
+@asynccontextmanager
+async def generation_permit(semaphore):
+    await semaphore.acquire()
+    permit = GenerationCredit(semaphore.release)
+    token = current_generation_permit.set(permit)
+    try:
+        yield
+    finally:
+        permit.release()
+        current_generation_permit.reset(token)
+
+
+def agent_finished():
+    """Called only after the collector has accepted this attempt's descriptor."""
+    permit = current_generation_permit.get()
+    if permit is not None:
+        permit.release()
+    credit = current_credit.get()
+    if credit is not None:
+        credit.release()
