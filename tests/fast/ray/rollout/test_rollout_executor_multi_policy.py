@@ -22,6 +22,7 @@ def _quiet_rollout_pipeline(monkeypatch):
     Timer().timers.clear()
     Timer().start_time.clear()
     monkeypatch.setattr(rollout_executor_module, "save_debug_rollout_data", lambda *a, **kw: None)
+    monkeypatch.setattr(rollout_executor_module, "log_rollout_preparation", lambda *a, **kw: None)
     monkeypatch.setattr(rollout_executor_module, "convert_samples_to_train_data", lambda *a, **kw: {})
     monkeypatch.setattr(rollout_executor_module, "split_train_data_by_dp", lambda *a, **kw: None)
     monkeypatch.setattr(rollout_executor_module, "assert_weight_version_is_published", lambda *a, **kw: None)
@@ -32,6 +33,7 @@ def _quiet_rollout_pipeline(monkeypatch):
 
 def _make_executor() -> RolloutExecutor:
     executor = RolloutExecutor.__new__(RolloutExecutor)
+    executor._diagnostic_writer = None
     executor.args = Namespace(
         enable_sample_ownership_checker=False,
         sample_ownership_grace_steps=10,

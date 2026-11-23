@@ -29,6 +29,7 @@ Agent function contract:
 """
 
 import argparse
+import asyncio
 import logging
 import time
 from collections.abc import Callable
@@ -38,9 +39,16 @@ from typing import Any
 import httpx
 from sglang.srt.entrypoints.openai.protocol import ChatCompletionRequest
 
+from miles.rollout.agent_pool.pool import AgentWorkerDied, agent_pool
+from miles.rollout.agent_pool.protocol import RunRequest
 from miles.rollout.agentic.agent_function import AGENT_FUNCTION_MODES, call_agent_function
 from miles.rollout.base_types import GenerateFnInput, GenerateFnOutput
-from miles.rollout.generate_utils.openai_endpoint_utils import OpenAIEndpointTracer
+from miles.rollout.generate_utils.openai_endpoint_utils import (
+    OpenAIEndpointTracer,
+    session_create_request,
+    session_samples_wire_fields,
+)
+from miles.rollout.session.samples.codec import SamplesReply, decode_samples_and_merge_input_sample
 from miles.rollout.session.v2.metrics import SESSION_ROLLOUT_METRICS_KEY
 from miles.utils.function_registry import load_function
 from miles.utils.types import Sample
@@ -50,12 +58,13 @@ logger = logging.getLogger(__name__)
 
 async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     assert not input.args.partial_rollout, "Partial rollout is not supported"
+    if input.args.custom_agent_function_mode == "pool":
+        return await generate_in_agent_pool(input)
     assert getattr(input.args, "session_server_instances", None), (
         "agentic_tool_call.generate requires session_server_instances. "
         "Pass --use-session-server to start the session server."
     )
     use_v2 = getattr(input.args, "use_session_server", None) == "v2"
-    collect_spec_metrics = use_v2 and input.args.sglang_speculative_algorithm is not None
     tracer = await OpenAIEndpointTracer.create(
         input.args,
         evaluation=input.evaluation,
@@ -105,12 +114,7 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
         if use_v2:
             collect_kwargs["agent_metadata"] = agent_metadata
         try:
-            collector = getattr(input.state, "collector", None) if not input.evaluation else None
-            if collector is not None:
-                result = await collector.collect(tracer, input.sample, **collect_kwargs)
-            else:
-                async with input.state.collection_capacity.admit():
-                    result = await tracer.collect_samples(input.sample, **collect_kwargs)
+            result = await tracer.collect_samples(input.sample, **collect_kwargs)
         # Costs this sample, not the run; a non-2xx still raises RuntimeError.
         except (TimeoutError, httpx.TransportError) as e:
             collect_failed = True
@@ -121,6 +125,63 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
                 f"total_time={time.monotonic()-t_start:.1f}s"
             )
 
+    return finish_episode(
+        input,
+        result=None if collect_failed else result,
+        agent_metadata=agent_metadata,
+        session_id=tracer.session_id,
+    )
+
+
+async def generate_in_agent_pool(input: GenerateFnInput) -> GenerateFnOutput:
+    """Run the episode on the agent worker pool (``--custom-agent-function-mode pool``).
+
+    The worker hosts the session in-process, runs the agent there, assembles and encodes the
+    samples, and streams them back over zmq: no session server, no collection round trip.
+    """
+    args = input.args
+    use_v2 = getattr(args, "use_session_server", None) == "v2"
+    max_seq_len = getattr(args, "max_seq_len", None)
+    metadata = input.sample.metadata if max_seq_len is None else {**input.sample.metadata, "max_seq_len": max_seq_len}
+    request = RunRequest(
+        prompt=input.sample.prompt,
+        request_kwargs=build_chat_request_kwargs(input.sampling_params),
+        metadata=metadata,
+        evaluation=input.evaluation,
+        session_params=session_create_request(
+            input.sampling_params, evaluation=input.evaluation, extra_key=None
+        ).model_dump(exclude={"evaluation", "extra_key"}, exclude_none=True),
+        extra_key=input.sample.kv_cache_namespace,
+        max_seq_len=max_seq_len,
+        use_v2=use_v2,
+    )
+    try:
+        reply, samples = await agent_pool(args).run(request)
+    except AgentWorkerDied as error:
+        logger.warning("Agent worker died during the episode: %s", error)
+        return finish_episode(input, result=None, agent_metadata=None, session_id="")
+    if not reply.ok:
+        logger.warning("Agent worker failed the episode: %s\n%s", reply.error, reply.traceback)
+        return finish_episode(input, result=None, agent_metadata=None, session_id=reply.session_id or "")
+    if reply.collect_status != 200:
+        # As a non-2xx samples POST does on the session-server path: the sample fails, not the run.
+        raise RuntimeError(f"session {reply.session_id} assembly failed with {reply.collect_status}: {reply.collect_error}")
+    result = await asyncio.to_thread(
+        decode_samples_and_merge_input_sample,
+        samples,
+        input.sample,
+        fields=session_samples_wire_fields(args, input.sampling_params, evaluation=input.evaluation),
+    )
+    return finish_episode(input, result=result, agent_metadata=reply.agent_metadata, session_id=reply.session_id)
+
+
+def finish_episode(
+    input: GenerateFnInput, *, result: SamplesReply | None, agent_metadata: dict | None, session_id: str
+) -> GenerateFnOutput:
+    """Turn one episode's collected samples into the generate output; ``result=None`` means collection failed."""
+    use_v2 = getattr(input.args, "use_session_server", None) == "v2"
+    collect_spec_metrics = use_v2 and input.args.sglang_speculative_algorithm is not None
+    collect_failed = result is None
     if collect_failed:
         sample = deepcopy(input.sample)
         sample.status = Sample.Status.ABORTED
@@ -142,10 +203,10 @@ async def generate(input: GenerateFnInput) -> GenerateFnOutput:
     session_rollout_metrics = None
     if collect_spec_metrics:
         session_rollout_metrics = result.session_metadata[SESSION_ROLLOUT_METRICS_KEY]
-        if session_rollout_metrics["session_id"] != tracer.session_id:
+        if session_rollout_metrics["session_id"] != session_id:
             raise ValueError(
                 "session_rollout_metrics.session_id does not match the collected session: "
-                f"{session_rollout_metrics['session_id']!r} != {tracer.session_id!r}"
+                f"{session_rollout_metrics['session_id']!r} != {session_id!r}"
             )
         if session_rollout_metrics["metrics"] is None:
             raise ValueError("a successful session collect must carry metrics")
@@ -188,10 +249,20 @@ def _add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument("--custom-agent-function-path", type=str)
     parser.add_argument(
         "--custom-agent-function-mode",
-        choices=AGENT_FUNCTION_MODES,
+        choices=(*AGENT_FUNCTION_MODES, "pool"),
         default="subproc",
         help="Where each agent call runs: subproc, a child process of its own so one episode's "
-        "blocking step or crash cannot stall the others; or inline, on the rollout's event loop.",
+        "blocking step or crash cannot stall the others; inline, on the rollout's event loop; or pool, "
+        "many episodes per long-lived worker process (--agent-pool-workers), each worker hosting the "
+        "sessions in-process and returning assembled samples over zmq (no session server round trips).",
+    )
+    parser.add_argument(
+        "--agent-pool-workers",
+        type=int,
+        default=32,
+        help="Agent worker processes under --custom-agent-function-mode pool; episodes spread over them. "
+        "At 1024 concurrent samples, 32 (about 32 episodes per worker) kept the per-turn overhead below the "
+        "session-server path's in the orchestration simulator; 16 added about 70 ms per turn.",
     )
     parser.add_argument(
         "--max-seq-len",

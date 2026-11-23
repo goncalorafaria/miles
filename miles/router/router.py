@@ -3,7 +3,7 @@ import json
 import logging
 import sys
 
-import httpx
+import aiohttp
 import setproctitle
 import uvicorn
 from fastapi import FastAPI, Request
@@ -30,7 +30,11 @@ def run_router(config: MilesRouterConfig):
     miles_router = MilesRouter(config, verbose=False)
 
     # Start the server
-    uvicorn.run(miles_router.app, host=config.host, port=config.port, log_level="info")
+    # Idle keep-alive closure well after the session servers' 5s client expiry, so a pooled
+    # connection is never closed by the router while a client is reusing it.
+    uvicorn.run(
+        miles_router.app, host=config.host, port=config.port, log_level="info", access_log=False, timeout_keep_alive=60
+    )
 
 
 class MilesRouter:
@@ -49,12 +53,29 @@ class MilesRouter:
         # Quarantined workers excluded from routing pool
         self.dead_workers: set[str] = set()
 
-        self.client = httpx.AsyncClient(
-            limits=httpx.Limits(max_connections=config.max_connections),
-            timeout=httpx.Timeout(config.timeout),
-        )
+        # aiohttp, not httpx: httpcore's pool rescans every connection on each request start and
+        # close, so with hundreds of in-flight generations the router saturated its one core on pool
+        # bookkeeping and queued requests for tens of seconds before they reached an engine.
+        # Created lazily on the serving loop (a ClientSession is bound to the loop that made it).
+        self._client: aiohttp.ClientSession | None = None
+        self._client_loop: asyncio.AbstractEventLoop | None = None
 
         self._setup_routes()
+
+    @property
+    def client(self) -> aiohttp.ClientSession:
+        loop = asyncio.get_running_loop()
+        if self._client is None or self._client.closed or self._client_loop is not loop:
+            self._client = aiohttp.ClientSession(
+                connector=aiohttp.TCPConnector(limit=self.config.max_connections, limit_per_host=0),
+                # Per phase, as httpx.Timeout(timeout) was: waiting for a pooled connection, then each read.
+                timeout=aiohttp.ClientTimeout(total=None, connect=self.config.timeout, sock_read=self.config.timeout),
+                # Bodies pass through byte-for-byte, together with their Content-Encoding.
+                auto_decompress=False,
+                cookie_jar=aiohttp.DummyCookieJar(),
+            )
+            self._client_loop = loop
+        return self._client
 
     def _setup_routes(self):
         """Setup all the HTTP routes except catch-all proxy"""
@@ -71,10 +92,11 @@ class MilesRouter:
     async def _check_worker_health(self, url):
         """Encapsulated health check logic for better maintainability."""
         try:
-            response = await self.client.get(f"{url}/health", timeout=5.0)
-            if response.status_code == 200:
+            async with self.client.get(f"{url}/health", timeout=aiohttp.ClientTimeout(total=5.0)) as response:
+                await response.read()
+            if response.status == 200:
                 return url, True
-            logger.debug(f"[miles-router] Worker {url} is unhealthy (Status: {response.status_code})")
+            logger.debug(f"[miles-router] Worker {url} is unhealthy (Status: {response.status})")
         except Exception as e:
             logger.debug(f"[miles-router] Worker {url} health check failed: {e}")
         return url, False
@@ -147,13 +169,16 @@ class MilesRouter:
             headers = {k: v for k, v in headers.items() if k.lower() not in ("content-length", "transfer-encoding")}
 
         try:
-            response = await self.client.request(request.method, url, content=body, headers=headers)
-            content = await response.aread()
+            async with self.client.request(
+                request.method, url, data=body, headers=headers, allow_redirects=False
+            ) as response:
+                content = await response.read()
             return {
                 "request_body": body,
                 "response_body": content,
-                "status_code": response.status_code,
-                "headers": dict(response.headers),
+                "status_code": response.status,
+                # Lower-case keys, as httpx returned them.
+                "headers": {k.lower(): v for k, v in response.headers.items()},
             }
         finally:
             self._finish_url(worker_url)
@@ -168,12 +193,9 @@ class MilesRouter:
             for k, v in headers.items()
             if k.lower() not in ("content-length", "transfer-encoding", "server", "date")
         }
-        content_type = headers.get("content-type", "")
-        try:
-            data = json.loads(content)
-            return JSONResponse(content=data, status_code=status_code, headers=headers)
-        except Exception:
-            return Response(content=content, status_code=status_code, headers=headers, media_type=content_type)
+        # Pass the body through unchanged: re-parsing and re-serializing multi-megabyte generate
+        # replies (per-token logprobs, score arrays) cost the router's single core for no change.
+        return Response(content=content, status_code=status_code, headers=headers)
 
     async def add_worker(self, request: Request):
         """Add a new worker to the router.

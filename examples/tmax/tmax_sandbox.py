@@ -64,12 +64,22 @@ import socket
 import tarfile
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
-from functools import cache
+from functools import cache, partial
 from pathlib import Path
 from urllib.parse import urlparse
 
 from miles.rollout.agentic.rollout_limits import current_scope, rollout_semaphore
+
+# docker-py calls block a thread for as long as the call runs (an exec up to the command timeout).
+# Their own pool keeps them from starving the loop's default executor, which a pooled agent worker
+# shares across all of its episodes.
+_DOCKER_THREADS = ThreadPoolExecutor(max_workers=256, thread_name_prefix="tmax-docker")
+
+
+async def _in_docker_thread(fn, /, *args, **kwargs):
+    return await asyncio.get_running_loop().run_in_executor(_DOCKER_THREADS, partial(fn, *args, **kwargs))
 
 logger = logging.getLogger(__name__)
 
@@ -430,7 +440,7 @@ class TmaxSandbox(SandboxBase):
         container, self._container = self._container, None
         if container is not None:
             try:
-                await asyncio.to_thread(container.remove, force=True)
+                await _in_docker_thread(container.remove, force=True)
             except _docker().errors.NotFound:
                 pass
             except Exception as e:
@@ -439,7 +449,7 @@ class TmaxSandbox(SandboxBase):
     async def _start(self) -> None:
         async with rollout_semaphore(f"tmax-start-{_node_of(self._docker_host)}", _settings().start_concurrency):
             await self._ensure_image()
-            self._container = await asyncio.to_thread(
+            self._container = await _in_docker_thread(
                 _client(self._docker_host).containers.create,
                 self._image,
                 command="sleep infinity",
@@ -448,21 +458,21 @@ class TmaxSandbox(SandboxBase):
                 mem_limit=_settings().mem_limit,
                 memswap_limit=_settings().mem_limit,
             )
-            await asyncio.to_thread(self._container.start)
+            await _in_docker_thread(self._container.start)
 
     async def _ensure_image(self) -> None:
         # Siblings of a GRPO group start the same image at once; pull it once per daemon (each has its own store).
         client = _client(self._docker_host)
         async with rollout_semaphore(f"tmax-pull-{self._docker_host}-{self._image}", 1):
             try:
-                await asyncio.to_thread(client.images.get, self._image)
+                await _in_docker_thread(client.images.get, self._image)
             except _docker().errors.ImageNotFound:
                 user = _settings().registry_auth.get("username", "anonymous")
                 logger.info(f"pulling sandbox image {self._image} on {self._docker_host} as {user}")
-                await asyncio.to_thread(client.images.pull, self._image, auth_config=_settings().registry_auth)
+                await _in_docker_thread(client.images.pull, self._image, auth_config=_settings().registry_auth)
 
     async def _put_archive(self, tar_bytes: bytes) -> None:
-        ok = await asyncio.to_thread(self._container.put_archive, "/", tar_bytes)
+        ok = await _in_docker_thread(self._container.put_archive, "/", tar_bytes)
         if not ok:
             raise SandboxInfraError("put_archive returned False")
 
@@ -480,7 +490,7 @@ class TmaxSandbox(SandboxBase):
     async def _exec_with_retries(self, wrapped: str):
         for attempt in range(_TRANSIENT_EXEC_RETRIES):
             try:
-                return await asyncio.to_thread(self._container.exec_run, ["bash", "-c", wrapped], demux=True)
+                return await _in_docker_thread(self._container.exec_run, ["bash", "-c", wrapped], demux=True)
             except _docker().errors.APIError as e:
                 gone = isinstance(e, _docker().errors.NotFound) or getattr(e, "status_code", None) == 409
                 if getattr(e, "status_code", None) == 409 and await self._was_oom_killed():
@@ -505,7 +515,7 @@ class TmaxSandbox(SandboxBase):
 
     async def _was_oom_killed(self) -> bool:
         try:
-            await asyncio.to_thread(self._container.reload)
+            await _in_docker_thread(self._container.reload)
         except Exception:
             return False
         return bool(self._container.attrs.get("State", {}).get("OOMKilled"))
@@ -516,7 +526,7 @@ async def remove_owned_sandboxes() -> int:
     removed = 0
     for docker_host in _settings().docker_hosts:
         try:
-            containers = await asyncio.to_thread(
+            containers = await _in_docker_thread(
                 lambda host=docker_host: _client(host).containers.list(
                     all=True, filters={"label": f"{_OWNER_LABEL}={owner()}"}
                 )
@@ -526,7 +536,7 @@ async def remove_owned_sandboxes() -> int:
             continue
         for container in containers:
             try:
-                await asyncio.to_thread(container.remove, force=True)
+                await _in_docker_thread(container.remove, force=True)
             except _docker().errors.NotFound:
                 pass
         removed += len(containers)

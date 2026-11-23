@@ -12,6 +12,7 @@ import json
 from copy import copy, deepcopy
 
 import numpy as np
+import orjson
 import safetensors.numpy
 import torch
 
@@ -189,6 +190,16 @@ def encode_samples(
     return safetensors.numpy.save(tensors)
 
 
+def _loads_meta(meta_arr: np.ndarray) -> dict:
+    # orjson: the meta JSON (response text, metadata) is the largest part of decoding; the stdlib
+    # parser took over a third of the rollout process's GIL time under load. encode_samples writes
+    # it with json.dumps, which emits NaN/Infinity for non-finite floats; orjson rejects those.
+    try:
+        return orjson.loads(memoryview(meta_arr))
+    except orjson.JSONDecodeError:
+        return json.loads(meta_arr.tobytes().decode("utf-8"))
+
+
 def decode_samples_and_merge_input_sample(
     payload: bytes | np.ndarray, input_sample: Sample, *, fields: tuple[str, ...] = COMPUTED_FIELDS
 ) -> SamplesReply:
@@ -206,7 +217,7 @@ def decode_samples_and_merge_input_sample(
         raise ValueError(
             f"{_SAMPLES_META_KEY} must be a rank-one uint8 tensor, got {meta_arr.dtype} rank {meta_arr.ndim}"
         )
-    meta = json.loads(meta_arr.tobytes().decode("utf-8"))
+    meta = _loads_meta(meta_arr)
     if meta["samples"]:
         assert_input_sample_defaults(input_sample)
     samples = []

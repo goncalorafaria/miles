@@ -139,3 +139,31 @@ async def test_transport_reuses_connection_and_limits_admission():
     finally:
         await pool.close()
         await runner.cleanup()
+
+
+@pytest.mark.asyncio
+async def test_spawn_takes_no_slot_and_keeps_the_client_open():
+    pool = CollectionTransport(1)
+    release = asyncio.Event()
+    clients = []
+
+    async def acknowledge(client):
+        clients.append(client)
+        await release.wait()
+
+    try:
+        async with pool.admit() as admitted:
+            background = pool.spawn(acknowledge)
+        await asyncio.sleep(0)
+        # the slot is free while the background call still runs on the same client
+        async with asyncio.timeout(1):
+            async with pool.admit() as again:
+                assert again is admitted
+        assert clients == [admitted] and pool.users == 1 and not admitted.closed
+        release.set()
+        await background
+        assert pool.users == 0
+        never = pool.spawn(lambda client: asyncio.Event().wait())
+    finally:
+        await pool.close()
+    assert never.cancelled() and not pool._background

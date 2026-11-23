@@ -941,31 +941,6 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
                 ),
             )
             parser.add_argument(
-                "--async-collection-worker",
-                action="store_true",
-                help="Collect finished agent sessions in one persistent Ray process; release both generation credits at handoff.",
-            )
-            parser.add_argument(
-                "--async-collection-workers",
-                type=int,
-                default=1,
-                help="Persistent collector processes; split session collection concurrency across these workers.",
-            )
-            parser.add_argument(
-                "--async-max-outstanding-attempts",
-                type=int,
-                default=None,
-                help="Reserve attempts before launch through collection, reward and whole-group completion. "
-                "Defaults to generation capacity plus --async-max-pending-collections; requires --async-collection-worker.",
-            )
-            parser.add_argument(
-                "--async-max-pending-collections",
-                type=int,
-                default=0,
-                help="Bound finished agent sessions collecting samples outside generation credits. "
-                "0 retains the shared limit; requires fully async sample backfill.",
-            )
-            parser.add_argument(
                 "--async-data-buffer-capacity-factor",
                 type=float,
                 default=2.0,
@@ -2804,8 +2779,12 @@ def get_miles_extra_args_provider(add_custom_arguments=None):
             parser.add_argument(
                 "--session-collection-concurrency",
                 type=int,
-                default=32,
-                help="Maximum admitted sample collections per rollout executor (positive).",
+                default=256,
+                help=(
+                    "Maximum sample payload transfers in flight per rollout executor (positive). A finished "
+                    "sample keeps its --async-max-concurrent-samples budget until collected, so a low value "
+                    "caps how fast new episodes start."
+                ),
             )
             parser.add_argument(
                 "--session-collection-processes",
@@ -3549,7 +3528,7 @@ def miles_validate_args(args):
     if args.recompute_logprobs_via_prefill:
         assert args.true_on_policy_mode, "--recompute-logprobs-via-prefill requires --true-on-policy-mode"
 
-    if getattr(args, "session_collection_concurrency", 32) < 1:
+    if getattr(args, "session_collection_concurrency", 256) < 1:
         raise ValueError("--session-collection-concurrency must be positive")
 
     if args.use_session_server not in (False, True, "v1", "v2"):
@@ -4071,24 +4050,6 @@ def miles_validate_args(args):
             f"chunk={args.offload_train_disk_chunk_mb}MB, moments={args.stream_optimizer_state_moment_dtype}"
         )
 
-    if args.async_collection_workers < 1 or args.async_collection_workers > args.session_collection_concurrency:
-        raise ValueError("--async-collection-workers must be between 1 and --session-collection-concurrency")
-    if args.async_collection_workers != 1 and not args.async_collection_worker:
-        raise ValueError("--async-collection-workers requires --async-collection-worker")
-    if args.async_collection_worker:
-        if not args.fully_async or args.rollout_submission_granularity == "group" or not args.use_session_server:
-            raise ValueError("--async-collection-worker requires fully async sample submission and a session server")
-    if args.async_max_outstanding_attempts is not None:
-        if not args.async_collection_worker or args.async_max_outstanding_attempts < args.n_samples_per_prompt:
-            raise ValueError(
-                "--async-max-outstanding-attempts requires a collection worker and room for one prompt group"
-            )
-    if args.async_max_pending_collections < 0:
-        raise ValueError("--async-max-pending-collections must be nonnegative")
-    if args.async_max_pending_collections and args.rollout_submission_granularity == "group":
-        raise ValueError("--async-max-pending-collections requires sample submission granularity")
-    if args.async_max_pending_collections and not args.fully_async:
-        raise ValueError("--async-max-pending-collections requires --fully-async")
     if args.async_max_concurrent_samples is not None:
         assert args.async_max_concurrent_samples >= args.n_samples_per_prompt, (
             f"--async-max-concurrent-samples ({args.async_max_concurrent_samples}) must be at least "

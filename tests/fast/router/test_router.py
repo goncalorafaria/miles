@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import Callable
 from urllib.parse import urlencode
 
-import httpx
+import aiohttp
 import pytest
 import requests
 from fastapi import Request
@@ -110,15 +110,16 @@ class TestMilesRouterInitialization:
 
         router = MilesRouter(config, verbose=False)
 
+        client = router.client
         try:
-            assert isinstance(router.client, httpx.AsyncClient)
-            assert router.client._transport._pool._max_connections == 7
-            assert router.client.timeout.connect == 3.5
-            assert router.client.timeout.read == 3.5
-            assert router.client.timeout.write == 3.5
-            assert router.client.timeout.pool == 3.5
+            assert isinstance(client, aiohttp.ClientSession)
+            assert client.connector.limit == 7
+            assert client.timeout.connect == 3.5
+            assert client.timeout.sock_read == 3.5
+            assert client.timeout.total is None
+            assert router.client is client, "one client per serving loop"
         finally:
-            await router.client.aclose()
+            await client.close()
 
 
 class TestWorkerManagement:

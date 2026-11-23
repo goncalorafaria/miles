@@ -1,6 +1,12 @@
-"""Loop-owned HTTP pool and admission control for completed rollout payloads."""
+"""Loop-owned HTTP pool and admission control for completed rollout payloads.
+
+Admission bounds the payload transfers in flight. Only the transfer holds a slot: a sample
+keeps its producer budget until its collection returns, so anything else done under a slot
+(decoding, acknowledging) throttles how fast finished samples free that budget.
+"""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from contextlib import asynccontextmanager
 
 import aiohttp
@@ -15,24 +21,44 @@ class CollectionTransport:
         self.client = None
         self.users = 0
         self.idle = None
+        self._background: set[asyncio.Task] = set()
 
     @asynccontextmanager
     async def admit(self):
+        """Hold one of ``concurrency`` transfer slots and the shared client."""
+        async with self._use() as client:
+            async with self._slots:
+                yield client
+
+    def spawn(self, fn: Callable[[aiohttp.ClientSession], Awaitable[None]]) -> asyncio.Task:
+        """Run ``fn(client)`` in the background without a slot; the client stays open until it ends."""
+
+        async def run():
+            async with self._use() as client:
+                await fn(client)
+
+        task = asyncio.get_running_loop().create_task(run())
+        self._background.add(task)  # the loop keeps only weak references to tasks
+        task.add_done_callback(self._background.discard)
+        return task
+
+    @asynccontextmanager
+    async def _use(self):
         self.users += 1
         if self.idle is not None:
             self.idle.cancel()
             self.idle = None
         try:
-            async with self._slots:
-                if self.client is None:
-                    self.client = aiohttp.ClientSession(
-                        connector=aiohttp.TCPConnector(limit=self.concurrency, keepalive_timeout=30),
-                        timeout=aiohttp.ClientTimeout(total=None),
-                        auto_decompress=False,
-                        skip_auto_headers={"Accept-Encoding"},
-                        cookie_jar=aiohttp.DummyCookieJar(),
-                    )
-                yield self.client
+            if self.client is None:
+                # Acknowledgements share the pool without a slot, so it needs room beyond the transfers.
+                self.client = aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(limit=0, keepalive_timeout=30),
+                    timeout=aiohttp.ClientTimeout(total=None),
+                    auto_decompress=False,
+                    skip_auto_headers={"Accept-Encoding"},
+                    cookie_jar=aiohttp.DummyCookieJar(),
+                )
+            yield self.client
         finally:
             self.users -= 1
             if not self.users:
@@ -53,6 +79,9 @@ class CollectionTransport:
             _transports.pop(loop)
         if self.idle is not None:
             self.idle.cancel()
+        for task in list(self._background):
+            task.cancel()
+        await asyncio.gather(*self._background, return_exceptions=True)
         if self.client is not None:
             await self.client.close()
             self.client = None

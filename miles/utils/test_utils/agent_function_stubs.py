@@ -99,3 +99,34 @@ async def hold_lock(*, name: str, hold_s: float, **kwargs) -> tuple[float, float
 async def die_holding_semaphore(*, name: str, **kwargs) -> None:
     async with rollout_semaphore(name, 1):
         os._exit(1)
+
+
+async def two_turn_chat(base_url, prompt, request_kwargs, metadata, **kwargs) -> dict:
+    """Two chat turns through the session at ``base_url``, then a reward: the parity-test agent."""
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(base_url=f"{base_url}/v1", api_key="EMPTY")
+    try:
+        messages = list(prompt)
+        for turn in range(2):
+            reply = await client.chat.completions.create(model="m", messages=messages, **request_kwargs)
+            messages = messages + [
+                reply.choices[0].message.model_dump(exclude_none=True),
+                {"role": "user", "content": f"turn {turn} done"},
+            ]
+    finally:
+        await client.close()
+    return {"reward": 0.5, "agent_metrics": {"turns": 2}}
+
+
+async def exit_process(**kwargs) -> None:
+    os._exit(3)  # takes the whole worker down, as a crashing native extension would
+
+
+async def block_until_pool_cancels(metadata, **kwargs) -> None:
+    """Blocks; on cancellation leaves a marker, as a real agent closes its sandbox in ``finally``."""
+    Path(metadata["started_marker"]).write_text("started")
+    try:
+        await asyncio.Event().wait()
+    finally:
+        Path(metadata["cancel_marker"]).write_text("cleaned up")

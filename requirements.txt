@@ -35,3 +35,5 @@ typing_extensions>=4.5
 wandb
 xxhash==3.7.1  # disk-delta weight sync (checksum)
 zstandard==0.25.0  # disk-delta weight sync (codec)
+
+pyzmq  # IPC between rollout coordinator and agent workers

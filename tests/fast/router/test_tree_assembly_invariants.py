@@ -41,6 +41,10 @@ _ARGS = SimpleNamespace(
     save_debug_trajectory_data=None,
     session_sample_picker_path="miles.rollout.session.v2.picker_hub.drop_rolled_back_leaves",
     session_sample_postprocessor_path="miles.rollout.session.v2.postprocessor_hub.default_postprocess",
+    # SessionServerConfig defaults for bounded sample assembly.
+    session_collection_processes=False,
+    session_collection_workers=2,
+    session_collection_retention=1800,
 )
 
 

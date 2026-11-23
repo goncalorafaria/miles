@@ -357,35 +357,3 @@ class TestSubmissionSchedulers:
         assert pending == {never}
 
         never.cancel()
-
-
-async def test_collection_handoff_releases_credit_but_keeps_group_owned(monkeypatch):
-    from miles.rollout.collection_capacity import CollectionCapacity
-    from miles.rollout.inference_rollout import inference_rollout_common as common
-
-    capacity = CollectionCapacity(GROUP_SIZE)
-    release = asyncio.Event()
-    entered = asyncio.Event()
-    fired = []
-
-    async def generate(state, sample, sampling_params, evaluation=False):
-        async with capacity.admit():
-            if capacity.active == GROUP_SIZE:
-                entered.set()
-            await release.wait()
-            return sample
-
-    monkeypatch.setattr(common, "generate_and_rm", generate)
-    state = FakeGenerateState(make_args())
-    task = asyncio.create_task(
-        common.generate_and_rm_group(
-            state, make_group(1), sampling_params={}, sample_done_callback=lambda: fired.append(1)
-        )
-    )
-    await asyncio.wait_for(entered.wait(), 2)
-    assert len(fired) == GROUP_SIZE
-    assert not task.done()  # checkpoint/lifecycle ownership survives credit release
-    release.set()
-    assert len(await task) == GROUP_SIZE
-    await asyncio.sleep(0)
-    assert len(fired) == GROUP_SIZE
