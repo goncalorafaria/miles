@@ -30,8 +30,8 @@ Failure semantics:
   for a reason the replica cannot name): ``reward=None``, so the missing-reward filter drops the group;
 * over-sampling abort: ``reward=None``; the group is discarded anyway.
 
-Each call runs in its own process under ``--custom-agent-function-mode subproc``
-(the default), so the abort hook, which runs in the rollout process, reaches
+Each call runs in its own process under ``--custom-agent-function-mode subproc``,
+so the abort hook, which runs in the rollout process, reaches
 in-flight episodes through a generation counter in a file scoped to that rollout
 process, plus removal of the rollout's containers to cut long commands short.
 

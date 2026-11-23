@@ -1,6 +1,6 @@
 # Agent worker pool
 
-`--custom-agent-function-mode pool` runs agentic episodes the way prime-rl's env server does:
+By default Miles runs agentic episodes the way prime-rl's env server does:
 a fixed set of long-lived worker processes (`--agent-pool-workers`), each running
 many episodes as asyncio tasks, instead of a fresh Python process per episode (`subproc`).
 

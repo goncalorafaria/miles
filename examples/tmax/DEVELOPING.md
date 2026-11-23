@@ -75,7 +75,9 @@ run_tmax_qwen3_5.py execute
 
 ### The process model
 
-The default `--custom-agent-function-mode subproc` gives every episode a process of its own. That shapes the code:
+The default pool shares each worker among concurrent episodes. Keep blocking work off its event loop and close resources at episode exit. See the [pool guide](../../docs/developer/agent-pool.md).
+
+The optional `--custom-agent-function-mode subproc` gives every episode a process of its own. That shapes the code:
 
 - **Module state lasts one episode.** `@cache`, module-level locks or counters do not span episodes. Limits shared
   across episodes (start and exec concurrency, one pull per image, sandboxes per node, the trace lock) are file

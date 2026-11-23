@@ -100,8 +100,6 @@ def build_args(bench, prompt_path, router_port):
         "miles.rollout.generate_hub.agentic_tool_call.generate",
         "--custom-agent-function-path",
         "sim_agent.run",
-        "--custom-agent-function-mode",
-        bench.agent_mode,
         "--custom-rm-path",
         "sim_agent.reward",
         "--use-session-server",
@@ -117,6 +115,7 @@ def build_args(bench, prompt_path, router_port):
         "4",
         "--async-max-concurrent-samples",
         str(bench.concurrency),
+        *(["--custom-agent-function-mode", bench.agent_mode] if bench.agent_mode else []),
         *bench.extra.split(),
     ]
     with patch.object(sys, "argv", argv):
@@ -167,7 +166,7 @@ def main():
     parser.add_argument("--jitter", type=float, default=0.5)
     parser.add_argument("--max-running", type=int, default=0)
     parser.add_argument("--start-concurrency", type=int, default=64)
-    parser.add_argument("--agent-mode", default="subproc")
+    parser.add_argument("--agent-mode", choices=("pool", "subproc", "inline"))
     parser.add_argument("--duration", type=float, default=900)
     parser.add_argument("--warmup", type=float, default=300)
     parser.add_argument("--extra", default="")

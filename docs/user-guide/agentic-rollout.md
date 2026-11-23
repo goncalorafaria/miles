@@ -89,7 +89,9 @@ For structured parsing, the payload may use SGLang's
 
 ### Where the agent runs
 
-By default (`--custom-agent-function-mode subproc`) every agent call runs in a
+By default episodes share 32 persistent workers. Each worker hosts its sessions and runs episodes concurrently. Set `--agent-pool-workers` to change the pool size. See the [agent pool guide](../developer/agent-pool.md).
+
+With `--custom-agent-function-mode subproc` every agent call runs in a
 child process of its own, started by the rollout process. One episode that blocks
 on a slow step, or crashes, then affects only itself; on the rollout's single
 event loop it would stall every other episode, long enough under many episodes

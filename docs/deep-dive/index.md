@@ -62,7 +62,7 @@ Collected from the pages above; each is traced to code there.
 - **`--fully-async` refuses `--rollout-function-path`**, so metrics a custom rollout function adds never appear in
   fully-async runs; log them from a `--custom-rollout-log-function-path` hook instead, as `examples/tmax/tmax_metrics`
   does.
-- **Agent functions run in a child process per call by default** (`--custom-agent-function-mode subproc`):
+- **Agent functions can run in a child process per call** (`--custom-agent-function-mode subproc`):
   module-level state, locks and caches in an agent module last one episode, and the module's `abort` hook runs in
   the rollout process, not in the agents. Share limits through `miles.rollout.agentic.rollout_limits`.
 - **Harbor failures split three ways.** Sandbox failures before the first model call (pull/build,

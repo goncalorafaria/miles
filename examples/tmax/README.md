@@ -457,8 +457,7 @@ For the 2B pair (`smoke_opd_2b.yaml`, not yet run on Beaker), scoring `hamishivi
 - `--fully-async` rejects `--colocate` and `--rollout-function-path`, so the episode metrics are logged by a
   `--custom-rollout-log-function-path` hook (`tmax_metrics.log_rollout_data`), which both modes call.
 - The abort hook matters only in synchronous mode: after over-sampling finishes a step, Miles waits for all
-  pending episodes. Each episode runs in its own process (`--custom-agent-function-mode subproc`, the
-  default), so `abort`, which runs in the rollout process, bumps a generation counter in a file scoped to
+  pending episodes. Episodes run in workers outside the rollout process, so `abort`, which runs in the rollout process, bumps a generation counter in a file scoped to
   that process and removes its containers; every in-flight model call and bash command races against the
   counter, and aborted episodes return within seconds. The episodes are not cancelled, because
   `as_completed_async` would re-raise the cancellation. Limits shared across episodes (start and exec

@@ -37,8 +37,8 @@ python $SIM/run_sim.py --label prod-1024 --out /tmp/prod-1024.json \
   --duration 1500 --warmup 600 --extra "<extra miles args>"
 ```
 
-`--agent-mode pool` runs the agents on the worker pool ([agent-pool.md](agent-pool.md)) instead of
-one process per episode, and the CPU summary's `agents` role counts agent processes either way.
+The simulator inherits the Miles agent mode. To reproduce the process-per-episode baseline, pass
+`--agent-mode subproc`. The CPU summary counts agent processes under `agents` in both modes.
 `specs.py` takes the median generated tokens per turn as a fourth argument; raise it to exercise larger per-token log-probability payloads.
 
 `--extra` passes Miles flags, so the same command compares code versions (put another

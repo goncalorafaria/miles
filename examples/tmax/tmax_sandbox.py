@@ -21,7 +21,7 @@ Behavior kept identical to open-instruct, since it shapes the reward:
 * a container that vanished or stopped (not OOM) mid-episode is recreated once and the command retried,
   losing its state, as DockerBackend._restart_and_retry_exec does.
 
-Under ``--custom-agent-function-mode subproc`` (the default) each episode runs in
+Under ``--custom-agent-function-mode subproc`` each episode runs in
 a process of its own, so the limits shared across episodes (start and exec
 concurrency, one pull per image, sandboxes per node) are file locks scoped to the
 rollout process, and containers are labelled with that scope rather than a pid.

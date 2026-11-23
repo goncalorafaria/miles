@@ -23,7 +23,7 @@ Agent function contract:
   Returning a dict merges it into every sample's metadata, so downstream
   reward models (--custom-rm-path) can read whatever the agent left there.
 
-  Under ``subproc`` (the default) each call runs in a child process of its own:
+  Under ``subproc`` each call runs in a child process of its own:
   its arguments and return value must be picklable, and module-level state lasts
   one call. Limits shared across calls go through ``miles.rollout.agentic.rollout_limits``.
 """
@@ -250,8 +250,8 @@ def _add_arguments(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--custom-agent-function-mode",
         choices=(*AGENT_FUNCTION_MODES, "pool"),
-        default="subproc",
-        help="Where each agent call runs: subproc, a child process of its own so one episode's "
+        default="pool",
+        help="Where each agent call runs (default: pool): subproc, a child process of its own so one episode's "
         "blocking step or crash cannot stall the others; inline, on the rollout's event loop; or pool, "
         "many episodes per long-lived worker process (--agent-pool-workers), each worker hosting the "
         "sessions in-process and returning assembled samples over zmq (no session server round trips).",

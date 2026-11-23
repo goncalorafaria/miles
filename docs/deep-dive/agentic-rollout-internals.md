@@ -248,7 +248,7 @@ are never re-tokenized and injected text is tokenized exactly once.
    refuses one, which is why `--namespaced-radix-cache` requires v2.
 2. It calls your agent function through `call_agent_function`
    (`miles/rollout/agentic/agent_function.py:57`). With
-   `--custom-agent-function-mode subproc`, the default, each call runs in a fresh
+   `--custom-agent-function-mode subproc`, each call runs in a fresh
    child process: arguments and return value must pickle, module-level state lasts
    one call, and limits shared across calls go through `rollout_limits` (section
    4.3). `inline` awaits it on the rollout's event loop. The arguments are
