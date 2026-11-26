@@ -46,6 +46,12 @@ def add_dashboard_arguments(parser) -> None:
         help="Collect dashboard telemetry (phases, GPU util, engine metrics) under {dump-details}/dashboard/. "
         "Requires --dump-details. View with `python -m miles.dashboard.serve`.",
     )
+    group.add_argument(
+        "--dashboard-engine-addrs",
+        nargs="+",
+        metavar="URL",
+        help="Scrape /metrics directly from these engine base URLs instead of discovering engines from the router.",
+    )
     group.add_argument("--dashboard-flush-interval", type=float, default=5.0, help="collector disk flush cadence (s)")
     group.add_argument("--dashboard-gpu-sample-interval", type=float, default=1.0, help="NVML sampling cadence (s)")
     group.add_argument("--dashboard-sglang-scrape-interval", type=float, default=2.0, help="engine scrape cadence (s)")
@@ -77,6 +83,8 @@ def validate_dashboard_args(args) -> None:
         "--use-miles-dashboard writes telemetry under {dump-details}/dashboard/ and the "
         "trajectory views read the rollout/train dumps, so --dump-details is required"
     )
+    if args.dashboard_engine_addrs and args.dashboard_sglang_scrape_mode == "router":
+        raise ValueError("--dashboard-engine-addrs requires direct or auto scrape mode")
     if not args.use_rollout_entropy:
         logger.warning(
             "--use-miles-dashboard without --use-rollout-entropy: per-token entropy "
@@ -101,5 +109,6 @@ def collector_config_from_args(args, *, start_ts: float) -> CollectorConfig:
         scrape_interval_seconds=args.dashboard_sglang_scrape_interval,
         scrape_mode=args.dashboard_sglang_scrape_mode,
         metric_whitelist=whitelist,
+        engine_addrs=tuple(dict.fromkeys(addr.rstrip("/") for addr in args.dashboard_engine_addrs or ())),
         forward_prometheus=args.dashboard_forward_prometheus,
     )

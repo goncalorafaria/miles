@@ -28,3 +28,15 @@ These CPU simulator runs used eight simulated inference engines and 256 samples 
 | Accelerated stress, p99 rollout event-loop round trip | 164–624 ms | 23 ms |
 
 The worker pool reduced collection and scheduling delays under stress. Engine throughput was within 1% of the baseline on the production-paced replay and 5–8% lower under accelerated load. The production-paced runs each delivered one batch, which is insufficient to estimate steady-state training step time. The saved comparisons cover 1,024 inflight episodes. A matched 512-episode result is still missing.
+
+## Engine occupancy during rollout
+
+Enable `--use-miles-dashboard --dump-details /path/to/run` to log engine time series.
+For external vLLM servers, add `--dashboard-engine-addrs http://engine-a:8000 http://engine-b:8000`.
+Supply each API server's base URL. Explicit addresses take precedence over router discovery.
+The dashboard polls each server's Prometheus `/metrics` endpoint every two seconds by default
+and persists the samples under the run's `dashboard/` directory.
+
+Select `vllm_num_requests_running`, `vllm_num_requests_waiting`, or `vllm_kv_cache_usage_perc`
+in the timeline. The KV value is a fraction (0.75 means 75%). Within each endpoint, the
+engine series sums request counts across data-parallel ranks and averages their KV utilization.

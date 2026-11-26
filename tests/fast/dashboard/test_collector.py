@@ -383,3 +383,39 @@ class TestDefaultSpawnSampler:
         assert isinstance(sampler, GpuSampler)
         assert (sampler.node, sampler.interval) == ("10.0.0.7", 0.25)
         assert isinstance(sampler._push, collector_mod._SelfGpuPush)
+
+
+def test_external_vllm_gauges_round_trip(tmp_path, monkeypatch):
+    addr = "http://vllm:8000"
+    payload = """
+vllm:num_requests_running{engine="0"} 7
+vllm:num_requests_running{engine="1"} 3
+vllm:num_requests_waiting{engine="0"} 0
+vllm:num_requests_waiting{engine="1"} 4
+vllm:kv_cache_usage_perc{engine="0"} 0.5
+vllm:kv_cache_usage_perc{engine="1"} 0.75
+"""
+
+    def fetch(url, timeout):
+        assert url == f"{addr}/metrics"
+        return payload
+
+    config = CollectorConfig(dashboard_dir=str(tmp_path), run_name="r", start_ts=0, engine_addrs=(addr,))
+    collector = make_collector(tmp_path, config=config, scraper_http_get=fetch)
+    # Drive the tick explicitly so the result is independent of thread scheduling.
+    monkeypatch.setattr("miles.dashboard.collector.SglangScraper.start", lambda self: None)
+    collector.start()
+    try:
+        scraper = collector._scraper
+        collector.set_router("http://router:3000")
+        assert collector._scraper is scraper
+        assert scraper.scrape_once(now=10) == 6
+    finally:
+        collector.shutdown()
+
+    store = MetricStore.load(tmp_path)
+    assert store.engine_series("vllm_num_requests_running")[0]["value"] == [10]
+    assert store.engine_series("vllm_num_requests_waiting")[0]["value"] == [4]
+    assert store.engine_series("vllm_kv_cache_usage_perc")[0]["value"] == [0.625]
+    ranks = store.engine_series("vllm_num_requests_waiting", per_dp_rank=True)
+    assert {row["labels"]["dp_rank"]: row["value"] for row in ranks} == {"0": [0], "1": [4]}

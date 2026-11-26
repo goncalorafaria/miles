@@ -71,3 +71,12 @@ def test_collector_config_whitelist_override_and_run_name_fallback():
     config = collector_config_from_args(args, start_ts=0.0)
     assert config.metric_whitelist == ("sglang_gen_throughput", "sglang_token_usage")
     assert config.run_name == "miles-run"
+
+
+def test_external_engine_urls():
+    args = full_args(dashboard_engine_addrs=["http://a:8000/", "http://a:8000", "http://b:8000"])
+    validate_dashboard_args(args)
+    assert collector_config_from_args(args, start_ts=0).engine_addrs == ("http://a:8000", "http://b:8000")
+    args.dashboard_sglang_scrape_mode = "router"
+    with pytest.raises(ValueError, match="requires direct"):
+        validate_dashboard_args(args)

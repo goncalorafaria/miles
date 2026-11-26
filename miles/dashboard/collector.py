@@ -134,6 +134,7 @@ class CollectorConfig:
     scrape_mode: str = "auto"  # "auto" or a ScrapeMode value; auto resolves at set_router()
     metric_whitelist: tuple[str, ...] = DEFAULT_METRIC_WHITELIST
     forward_prometheus: bool = False
+    engine_addrs: tuple[str, ...] = ()
 
 
 class DashboardCollector:
@@ -181,6 +182,8 @@ class DashboardCollector:
         assert self._flush_thread is None, "collector already started"
         self._flush_thread = threading.Thread(target=self._run_flush_loop, name="dashboard-flush", daemon=True)
         self._flush_thread.start()
+        if self.config.engine_addrs:
+            self._start_scraper(None, ScrapeMode.DIRECT)
 
     def shutdown(self) -> None:
         if self._scraper is not None:
@@ -259,7 +262,12 @@ class DashboardCollector:
 
     def set_router(self, router_addr: str) -> None:
         """Register the sglang router and start (or re-point) the scraper."""
+        if self.config.engine_addrs:
+            return  # Explicit direct endpoints own the scraper for this run.
         mode = ScrapeMode.DIRECT if self.config.scrape_mode == "auto" else ScrapeMode(self.config.scrape_mode)
+        self._start_scraper(router_addr, mode)
+
+    def _start_scraper(self, router_addr: str | None, mode: ScrapeMode) -> None:
         # never hold the lock while stopping a scraper: its thread may be
         # blocked on the same lock inside the _append sink (deadlock)
         with self._lock:
@@ -285,6 +293,8 @@ class DashboardCollector:
         logger.info("dashboard scraper started in %s mode against %s", mode, router_addr)
 
     def _current_engine_addrs(self) -> list[str]:
+        if self.config.engine_addrs:
+            return list(self.config.engine_addrs)
         with self._lock:
             if self._last_topology is None:
                 return []

@@ -48,6 +48,9 @@ const METRIC_DESCRIPTIONS = [
   ["pg_clipfrac", "fraction of tokens where the PPO clip bound was active"],
   ["kl", "KL divergence between the current and reference policy"],
   ["loss", "training loss for this step"],
+  ["vllm_num_requests_running", "requests running in model execution batches"],
+  ["vllm_num_requests_waiting", "requests waiting for the engine scheduler"],
+  ["vllm_kv_cache_usage_perc", "fraction of KV cache blocks in use (1.0 means 100%)"],
   ["num_running_reqs", "requests concurrently running on the sglang engine"],
   ["gen_throughput", "generated tokens per second"],
   ["token_usage", "fraction of KV cache capacity currently in use"],
@@ -76,7 +79,7 @@ function orderedCategories(meta) {
     ...present.filter((c) => !CATEGORY_ORDER.includes(c) && c !== "dump").sort(),
   ];
   // grafana-parity category: scraped engine metrics, x = wall clock
-  if (meta.engine_metric_keys?.length) cats.splice(cats.includes("dump") ? cats.length - 1 : cats.length, 0, "sglang");
+  if (meta.engine_metric_keys?.length) cats.splice(cats.includes("dump") ? cats.length - 1 : cats.length, 0, "engine metrics");
   return cats;
 }
 
@@ -91,7 +94,7 @@ export async function renderMetrics(view, meta) {
   const filterInput = el("input", { type: "text", placeholder: "filter…" });
   const catList = el("div", { class: "keylist" });
 
-  const keysIn = (cat) => (cat === "sglang" ? meta.engine_metric_keys : meta.metric_keys.filter((k) => categoryOf(k) === cat));
+  const keysIn = (cat) => (cat === "engine metrics" ? meta.engine_metric_keys : meta.metric_keys.filter((k) => categoryOf(k) === cat));
   const matching = (keys) => {
     const needle = filterInput.value.toLowerCase();
     return keys.filter((k) => k.toLowerCase().includes(needle));
@@ -192,8 +195,8 @@ export async function renderMetrics(view, meta) {
 
   function buildPanels() {
     slots.clear();
-    legendPanel.style.display = active === "sglang" ? "" : "none";
-    if (active === "sglang") renderLegend(); // toggle must exist before data arrives
+    legendPanel.style.display = active === "engine metrics" ? "" : "none";
+    if (active === "engine metrics") renderLegend(); // toggle must exist before data arrives
     const keys = activeKeys();
     if (!keys.length) {
       chartsPanel.replaceChildren(el("p", { class: "muted" }, [active ? "no metrics here" : "no metrics logged"]));
@@ -213,7 +216,7 @@ export async function renderMetrics(view, meta) {
 
   function refresh() {
     const current = ++epoch;
-    if (active === "sglang") {
+    if (active === "engine metrics") {
       for (const [key, slot] of slots.entries()) {
         api("/api/timeline/engine_series", { metric: key, max_points: 1000, per_dp_rank: perDpRank })
           .then(({ series }) => {

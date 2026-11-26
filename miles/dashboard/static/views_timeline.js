@@ -28,6 +28,10 @@ const PHASE_COLORS = {
 const DEFAULT_PHASE_COLOR = "#9c9488";
 const OVERLAY_METRICS = [
   "sglang_num_running_reqs",
+  "vllm_num_requests_running",
+  "vllm_num_requests_waiting",
+  "vllm_kv_cache_usage_perc",
+  "sglang_num_queue_reqs",
   "sglang_gen_throughput",
   "sglang_token_usage",
   "sglang_cache_hit_rate",
@@ -92,7 +96,8 @@ export async function renderTimeline(view, meta, route) {
   let v0 = 0;
   let v1 = 1;
   let haveData = false;
-  let overlayMetric = meta.capabilities.has_engine_series ? OVERLAY_METRICS[0] : null;
+  const overlays = OVERLAY_METRICS.filter((metric) => meta.engine_metric_keys?.includes(metric));
+  let overlayMetric = overlays[0] ?? null;
   let showMem = false;
   let showAbsolute = false; // x-axis ticks: relative "+h:mm:ss" (default) vs wall-clock
   let multiNode = false;
@@ -240,7 +245,7 @@ export async function renderTimeline(view, meta, route) {
   const overlayScale = el("span", { style: `color: ${OVERLAY_COLOR}; font-size: 12px` });
   const followBadge = el("span", { class: "muted" });
   const renderToolbar = () => {
-    const chips = OVERLAY_METRICS.map((m) =>
+    const chips = overlays.map((m) =>
       el(
         "button",
         {

@@ -40,6 +40,9 @@ from miles.dashboard.store import EngineSample
 logger = logging.getLogger(__name__)
 
 DEFAULT_METRIC_WHITELIST = (
+    "vllm_num_requests_running",
+    "vllm_num_requests_waiting",
+    "vllm_kv_cache_usage_perc",
     "sglang_num_running_reqs",
     "sglang_num_queue_reqs",
     "sglang_gen_throughput",
@@ -180,6 +183,8 @@ class SglangScraper:
                     self._warn(f"router sample for {name} lacks worker_addr; dropping")
                     continue
                 labels = {k: v for k, v in sample.labels.items() if k in KEPT_LABELS}
+                if name.startswith("vllm_") and "engine" in sample.labels:
+                    labels["dp_rank"] = sample.labels["engine"]
                 self._sink(
                     EngineSample(ts=now, addr=sample_addr, metric=name, labels=labels, value=float(sample.value))
                 )

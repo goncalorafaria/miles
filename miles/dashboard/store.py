@@ -1014,7 +1014,7 @@ class MetricStore:
     # engine-level aggregation across dp ranks: intensive metrics average,
     # everything else (queue depths, throughputs, cumulative counters) sums
     ENGINE_MEAN_AGGREGATED_METRICS: ClassVar[frozenset[str]] = frozenset(
-        {"sglang_token_usage", "sglang_cache_hit_rate", "sglang_kv_transfer_latency_ms"}
+        {"sglang_token_usage", "sglang_cache_hit_rate", "sglang_kv_transfer_latency_ms", "vllm_kv_cache_usage_perc"}
     )
 
     def engine_metric_names(self) -> list[str]:
