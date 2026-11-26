@@ -24,17 +24,17 @@ _OCCUPANCY_GAUGE = re.compile(
 )
 
 
-def _engine_gauges(worker: str, payload: str) -> str:
+def _engine_gauges(worker: str, payload: str) -> dict[str, list[str]]:
     # Preserve the engine's label set (including DP rank) and sample value.
     # Filtering before parsing avoids constructing objects for every histogram bucket.
     worker_label = f"worker_addr={json.dumps(worker)}"
-    lines = []
+    gauges: dict[str, list[str]] = {}
     for line in payload.splitlines():
         if match := _OCCUPANCY_GAUGE.fullmatch(line):
             name, labels, value = match.groups()
             labels = f"{worker_label},{labels}" if labels else worker_label
-            lines.append(f"sglang_{name}{{{labels}}}{value}\n")
-    return "".join(lines)
+            gauges.setdefault(name, []).append(f"sglang_{name}{{{labels}}}{value}\n")
+    return gauges
 
 
 def run_router(config: MilesRouterConfig):
@@ -169,14 +169,15 @@ class MilesRouter:
     async def engine_metrics(self) -> Response:
         workers = [url for url in self.worker_request_counts if url not in self.dead_workers]
         samples = await asyncio.gather(*(self._fetch_engine_gauges(url) for url in workers))
-        header = (
-            "# TYPE sglang_num_running_reqs gauge\n"
-            "# TYPE sglang_num_queue_reqs gauge\n"
-            "# TYPE sglang_token_usage gauge\n"
-        )
-        return Response(header + "".join(samples), media_type="text/plain; version=0.0.4")
+        # Prometheus exposition groups every worker's samples under one TYPE declaration.
+        lines = []
+        for name in sorted({name for worker in samples for name in worker}):
+            lines.append(f"# TYPE sglang_{name} gauge\n")
+            for worker in samples:
+                lines.extend(worker.get(name, ()))
+        return Response("".join(lines), media_type="text/plain; version=0.0.4")
 
-    async def _fetch_engine_gauges(self, url: str) -> str:
+    async def _fetch_engine_gauges(self, url: str) -> dict[str, list[str]]:
         try:
             async with self.client.get(
                 f"{url}/metrics", timeout=aiohttp.ClientTimeout(total=5), auto_decompress=True
@@ -186,7 +187,7 @@ class MilesRouter:
             return await asyncio.to_thread(_engine_gauges, url, payload)
         except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeError) as exc:
             logger.debug("Skipping engine metrics from %s: %s", url, exc)
-            return ""
+            return {}
 
     async def proxy(self, request: Request, path: str):
         """Proxy all other requests to the SGLang router"""

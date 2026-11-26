@@ -554,7 +554,10 @@ def test_engine_occupancy_metrics(router_env, mock_worker_factory, monkeypatch):
 
     response = requests.get(f"{router_env.url}/engine_metrics", timeout=10)
     response.raise_for_status()
-    samples = [sample for family in text_string_to_metric_families(response.text) for sample in family.samples]
+    families = list(text_string_to_metric_families(response.text))
+    assert len(families) == 3
+    assert all(family.type == "gauge" for family in families)
+    samples = [sample for family in families for sample in family.samples]
     assert len(samples) == 6
     for index, worker in enumerate(workers[:2]):
         gauges = {sample.name: sample for sample in samples if sample.labels["worker_addr"] == worker.url}
