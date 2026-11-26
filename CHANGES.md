@@ -40,3 +40,14 @@ and persists the samples under the run's `dashboard/` directory.
 Select `vllm_num_requests_running`, `vllm_num_requests_waiting`, or `vllm_kv_cache_usage_perc`
 in the timeline. The KV value is a fraction (0.75 means 75%). Within each endpoint, the
 engine series sums request counts across data-parallel ranks and averages their KV utilization.
+
+### Miles-managed SGLang engines
+
+With `--use-miles-router --use-wandb --sglang-enable-metrics`, the rollout
+executor's W&B system monitor polls the Miles router's `/engine_metrics`.
+The router reads each healthy registered engine's `/metrics` concurrently
+and exports `sglang_num_running_reqs`, `sglang_num_queue_reqs`, and
+`sglang_token_usage` with the worker address and original labels.
+Token usage is the fraction of KV token capacity in use. An unavailable
+engine contributes a gap. Engine metrics can also be viewed under
+**Metrics → engine metrics** when the Miles dashboard is enabled.

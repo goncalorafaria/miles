@@ -532,3 +532,32 @@ class TestProxyIntegration:
         r = requests.get(f"{router_env.url}/health", timeout=5.0)
         r.raise_for_status()
         assert r.json()["status"] == "ok"
+
+
+def test_engine_occupancy_metrics(router_env, mock_worker_factory):
+    from fastapi.responses import PlainTextResponse
+    from prometheus_client.parser import text_string_to_metric_families
+
+    workers = [mock_worker_factory() for _ in range(3)]
+    for index, worker in enumerate(workers):
+        if index < 2:
+            payload = (
+                f'sglang:num_running_reqs{{dp_rank="0"}} {index + 2}\n'
+                'sglang:num_queue_reqs 0\n'
+                'sglang:token_usage{dp_rank="0"} 0.75\n'
+                'sglang:unrelated 99\n'
+            )
+            worker.app.get("/metrics")(lambda text=payload: PlainTextResponse(text))
+        requests.post(f"{router_env.url}/add_worker", params={"url": worker.url}, timeout=5).raise_for_status()
+
+    response = requests.get(f"{router_env.url}/engine_metrics", timeout=10)
+    response.raise_for_status()
+    samples = [sample for family in text_string_to_metric_families(response.text) for sample in family.samples]
+    assert len(samples) == 6
+    for index, worker in enumerate(workers[:2]):
+        gauges = {sample.name: sample for sample in samples if sample.labels["worker_addr"] == worker.url}
+        assert gauges["sglang_num_running_reqs"].value == index + 2
+        assert gauges["sglang_num_running_reqs"].labels["dp_rank"] == "0"
+        assert gauges["sglang_num_queue_reqs"].value == 0
+        assert gauges["sglang_token_usage"].value == 0.75
+    assert all(count == 0 for count in router_env.router.worker_request_counts.values())

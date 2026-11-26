@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import sys
 
 import aiohttp
@@ -15,6 +16,25 @@ from miles.utils.logging_utils import configure_logger_raw
 from miles.utils.workers.argv_utils import parse_config_argv
 
 logger = logging.getLogger(__name__)
+
+
+# Names accepted by the W&B OpenMetrics scraper and the Miles dashboard.
+_OCCUPANCY_GAUGE = re.compile(
+    r"^sglang:(num_running_reqs|num_queue_reqs|token_usage)(?:\{(.*)\})?(\s+.+)$"
+)
+
+
+def _engine_gauges(worker: str, payload: str) -> str:
+    # Preserve the engine's label set (including DP rank) and sample value.
+    # Filtering before parsing avoids constructing objects for every histogram bucket.
+    worker_label = f"worker_addr={json.dumps(worker)}"
+    lines = []
+    for line in payload.splitlines():
+        if match := _OCCUPANCY_GAUGE.fullmatch(line):
+            name, labels, value = match.groups()
+            labels = f"{worker_label},{labels}" if labels else worker_label
+            lines.append(f"sglang_{name}{{{labels}}}{value}\n")
+    return "".join(lines)
 
 
 def run_router(config: MilesRouterConfig):
@@ -83,6 +103,7 @@ class MilesRouter:
         self.app.post("/add_worker")(self.add_worker)
         self.app.post("/remove_worker")(self.remove_worker)
         self.app.get("/list_workers")(self.list_workers)
+        self.app.get("/engine_metrics")(self.engine_metrics)
         # Catch-all route for proxying to SGLang - must be registered LAST
         self.app.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE"])(self.proxy)
 
@@ -144,6 +165,28 @@ class MilesRouter:
             except Exception as e:
                 logger.error(f"[miles-router] Unexpected error in health check loop: {e}", exc_info=True)
                 await asyncio.sleep(5)
+
+    async def engine_metrics(self) -> Response:
+        workers = [url for url in self.worker_request_counts if url not in self.dead_workers]
+        samples = await asyncio.gather(*(self._fetch_engine_gauges(url) for url in workers))
+        header = (
+            "# TYPE sglang_num_running_reqs gauge\n"
+            "# TYPE sglang_num_queue_reqs gauge\n"
+            "# TYPE sglang_token_usage gauge\n"
+        )
+        return Response(header + "".join(samples), media_type="text/plain; version=0.0.4")
+
+    async def _fetch_engine_gauges(self, url: str) -> str:
+        try:
+            async with self.client.get(
+                f"{url}/metrics", timeout=aiohttp.ClientTimeout(total=5), auto_decompress=True
+            ) as response:
+                response.raise_for_status()
+                payload = await response.text()
+            return await asyncio.to_thread(_engine_gauges, url, payload)
+        except (aiohttp.ClientError, asyncio.TimeoutError, UnicodeError) as exc:
+            logger.debug("Skipping engine metrics from %s: %s", url, exc)
+            return ""
 
     async def proxy(self, request: Request, path: str):
         """Proxy all other requests to the SGLang router"""
