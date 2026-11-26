@@ -534,10 +534,12 @@ class TestProxyIntegration:
         assert r.json()["status"] == "ok"
 
 
-def test_engine_occupancy_metrics(router_env, mock_worker_factory):
+def test_engine_occupancy_metrics(router_env, mock_worker_factory, monkeypatch):
     from fastapi.responses import PlainTextResponse
     from prometheus_client.parser import text_string_to_metric_families
 
+    # A metrics-only scrape never invokes the tokenizer.
+    monkeypatch.setattr("miles.utils.test_utils.mock_sglang_server.load_tokenizer", lambda *a, **kw: None)
     workers = [mock_worker_factory() for _ in range(3)]
     for index, worker in enumerate(workers):
         if index < 2:
